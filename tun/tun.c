@@ -38,7 +38,7 @@ int tun_alloc(char *dev, int flags)
     char *clonedev = "/dev/net/tun";
 
     if((fd = open(clonedev , O_RDWR)) < 0) {
-        perror("Opening /dev/net/tun");
+        perror("tun: opening /dev/net/tun");
         return fd;
     }
 
@@ -51,7 +51,7 @@ int tun_alloc(char *dev, int flags)
     }
 
     if ((err = ioctl(fd, TUNSETIFF, (void *)&ifr)) < 0) {
-        perror("ioctl(TUNSETIFF)");
+        perror("tun: ioctl(TUNSETIFF)");
         close(fd);
         return err;
     }
@@ -71,7 +71,7 @@ int cread(int fd, char *buf, int n)
     int nread;
 
     if ((nread=read(fd, buf, n)) < 0) {
-        perror("Reading data");
+        perror("tun: reading data");
         exit(1);
     }
     return nread;
@@ -87,7 +87,7 @@ int cwrite(int fd, char *buf, int n)
     int nwrite;
 
     if ((nwrite=write(fd, buf, n)) < 0) {
-        perror("Writing data");
+        perror("tun: writing data");
         exit(1);
     }
     return nwrite;

@@ -19,7 +19,7 @@
 #define PASSTHRU_CONF_PORT  15
 
 uart_t debug_uart = { .is_stdout = true };
-uart_t share_uart = { .fd = -1, .port = "/dev/ttyUSB0", .is_stdout = false };
+static uart_t share_uart = { .fd = -1, .port = NULL, .is_stdout = false };
 
 #define CD_FRAME_MAX 10
 static cd_frame_t cd_frame_alloc[CD_FRAME_MAX];
@@ -121,7 +121,7 @@ static void dummy_set_filter(cd_intf_t *intf, uint8_t filter)
     }
 }
 
-int cdnet_init(void)
+int cdnet_init(char *uart_dev, uint8_t mac)
 {
     int i;
     for (i = 0; i < CD_FRAME_MAX; i++)
@@ -129,6 +129,7 @@ int cdnet_init(void)
     for (i = 0; i < NET_PACKET_MAX; i++)
         list_put(&net_free_head, &net_packet_alloc[i].node);
 
+    share_uart.port = uart_dev;
     share_uart.fd = open(share_uart.port, O_RDWR | O_NOCTTY | O_SYNC);
     if (uart_set_attribs(share_uart.fd, B115200))
         exit(-1);
@@ -154,9 +155,9 @@ int cdnet_init(void)
     cd_proxy_intf.set_filter = dummy_set_filter;
 
     cdnet_intf_init(&net_setting_intf, &net_free_head, &cd_setting_intf, 0xaa);
-    cdnet_intf_init(&net_proxy_intf, &net_free_head, &cd_proxy_intf, 0x00);
+    cdnet_intf_init(&net_proxy_intf, &net_free_head, &cd_proxy_intf, mac);
 
-    net_proxy_intf.cd_intf->set_filter(net_proxy_intf.cd_intf, 0x00);
+    net_proxy_intf.cd_intf->set_filter(net_proxy_intf.cd_intf, mac);
 
     return share_uart.fd;
 }

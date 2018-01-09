@@ -69,18 +69,6 @@ struct in6_addr *default_router6 = &_default_router6;
 bool has_router6 = false;
 
 
-int init_addr(void)
-{
-    int ret;
-    ret = inet_pton(AF_INET, "192.168.100.1", &ipv4_self->s_addr);
-    if (ret != 1)
-        return -1;
-    ret = inet_pton(AF_INET6, "fd00::ff:fe00:0", &unique_self->s6_addr);
-    if (ret != 1)
-        return -1;
-    return 0;
-}
-
 static inline bool is_cdnet_link_local(struct in6_addr *addr)
 {
     if (addr->s6_addr32[0] == 0x000080fe &&
@@ -199,11 +187,6 @@ int ip2cdnet(cdnet_intf_t *intf, cdnet_packet_t *pkt,
             return -1;
         }
 
-        if (ipv6->src_ip.s6_addr[15] != unique_self->s6_addr[15]) {
-            d_error("< ip: link_local id != unique_self id\n");
-            return -1;
-        }
-
     } else if (is_cdnet_unique_local(&ipv6->src_ip, unique_self)) {
         // unique local
         pkt->src_mac = unique_self->s6_addr[15];
@@ -282,6 +265,7 @@ int cdnet2ip(cdnet_intf_t *intf, cdnet_packet_t *pkt,
     struct udp *udp = (struct udp *)(ip_dat + 40);
 
     if (pkt->is_level2) {
+        *ip_len = pkt->dat_len;
         memcpy(ip_dat, pkt->dat, pkt->dat_len);
         return 0;
     }

@@ -26,6 +26,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <getopt.h>
 
 #include "tun.h"
 #include "ip.h"
@@ -35,7 +36,7 @@
 #define BUFSIZE 2000
 
 extern cdnet_intf_t net_proxy_intf;
-int cdnet_init(void);
+int cdnet_init(char *uart_dev, uint8_t mac);
 void cdnet_task_rx(void);
 void cdnet_task_tx(void);
 
@@ -47,6 +48,32 @@ int cdnet2ip(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
 void hex_dump(char *desc, void *addr, int len);
 
 
+extern struct in_addr *ipv4_self;
+extern struct in_addr *default_router4;
+extern bool has_router4;
+
+extern struct in6_addr *unique_self;
+extern struct in6_addr *global_self;
+extern struct in6_addr *default_router6;
+extern bool has_router6;
+
+static uint8_t local_mac = 255;
+static char uart_dev[50] = "/dev/ttyUSB0";
+static char tun_name[20] = "";
+
+
+static struct option longopts[] = {
+        { "self4",          required_argument, NULL,    's' },
+        { "router4",        required_argument, NULL,    't' },
+        { "unique_self",    required_argument, NULL,    'u' },
+        { "global_self",    required_argument, NULL,    'g' },
+        { "router6",        required_argument, NULL,    'r' },
+        { "dev",            required_argument, NULL,    'd' },
+        { "mac",            required_argument, NULL,    'm' },
+        { "tun",            required_argument, NULL,    'n' },
+        { 0, 0, 0, 0 }
+};
+
 int main(int argc, char *argv[]) {
 
     int tun_fd, uart_fd, maxfd;
@@ -54,17 +81,76 @@ int main(int argc, char *argv[]) {
     int option;
     uint16_t nread, nwrite, plength;
     int flags = IFF_TUN;
-    char tun_name[20] = "";
     uint8_t ip_dat[BUFSIZE];
 
-    /* Check command line options */
-    while ((option = getopt(argc, argv, "i:")) > 0) {
-        switch(option) {
-        case 'i':
-            // strncpy(uart_name, optarg, sizeof(uart_name));
+    while (true) {
+        option = getopt_long(argc, argv, "s:t:u:g:r:d:", longopts, NULL);
+        if (option == -1) {
+            if (optind < argc) {
+                printf ("non-option ARGV-elements: ");
+                while (optind < argc)
+                    printf ("%s ", argv[optind++]);
+                putchar ('\n');
+            }
             break;
+        }
+        switch (option) {
+        case 's':
+            if (inet_pton(AF_INET, optarg, &ipv4_self->s_addr) != 1) {
+                d_debug("set ipv4_self error: %s\n", optarg);
+                return -1;
+            }
+            d_debug("set ipv4_self: %s\n", optarg);
+            break;
+        case 't':
+            if (inet_pton(AF_INET, optarg, &default_router4->s_addr) != 1) {
+                d_debug("set default_router4 error: %s\n", optarg);
+                return -1;
+            }
+            d_debug("set default_router4: %s\n", optarg);
+            has_router4 = true;
+            break;
+        case 'u':
+            if (inet_pton(AF_INET6, optarg, unique_self->s6_addr) != 1) {
+                d_debug("set unique_self error: %s\n", optarg);
+                return -1;
+            }
+            d_debug("set unique_self: %s\n", optarg);
+            break;
+        case 'g':
+            if (inet_pton(AF_INET6, optarg, global_self->s6_addr) != 1) {
+                d_debug("set global_self error: %s\n", optarg);
+                return -1;
+            }
+            d_debug("set global_self: %s\n", optarg);
+            break;
+        case 'r':
+            if (inet_pton(AF_INET6, optarg, default_router6->s6_addr) != 1) {
+                d_debug("set default_router6 error: %s\n", optarg);
+                return -1;
+            }
+            d_debug("set default_router6: %s\n", optarg);
+            has_router6 = true;
+            break;
+        case 'd':
+            strncpy(uart_dev, optarg, sizeof(uart_dev));
+            d_debug("set uart_dev: %s\n", optarg);
+            break;
+        case 'm':
+            local_mac = atol(optarg);
+            d_debug("set local_mac: %d\n", local_mac);
+            break;
+        case 'n':
+            strncpy(tun_name, optarg, sizeof(tun_name));
+            d_debug("set tun_name: %s\n", optarg);
+            break;
+        case 0:
+            break;
+        case '?':
         default:
-            d_error("Unknown option %c\n", option);
+            fprintf(stderr, "%s: option `-%c' is invalid: ignored\n",
+                    argv[0], optopt);
+            break;
         }
     }
 
@@ -74,12 +160,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    {
-        int init_addr(void);
-        init_addr();
-    }
-
-    uart_fd = cdnet_init();
+    uart_fd = cdnet_init(uart_dev, local_mac);
     maxfd = max(tun_fd, uart_fd);
 
     while (true) {
@@ -113,11 +194,11 @@ int main(int argc, char *argv[]) {
             ret = ip2cdnet(&net_proxy_intf, pkt, ip_dat, nread);
 
             if (ret == 0) {
-                list_put(&net_proxy_intf.tx_head, node);
                 d_debug("<<<: write to proxy, tun len: %d\n", nread);
+                list_put(&net_proxy_intf.tx_head, node);
             } else {
-                list_put(net_proxy_intf.free_head, node);
                 d_debug("<<<: ip2cdnet drop\n");
+                list_put(net_proxy_intf.free_head, node);
             }
             cdnet_task_tx();
         }
@@ -134,8 +215,9 @@ int main(int argc, char *argv[]) {
 
                 ret = cdnet2ip(&net_proxy_intf, pkt, ip_dat, &ip_len);
                 if (ret == 0) {
-                    nwrite = cwrite(tun_fd, ip_dat, ip_len);
                     d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
+                    hex_dump("write to tun", ip_dat, ip_len);
+                    nwrite = cwrite(tun_fd, ip_dat, ip_len);
                 } else {
                     d_debug(">>>: cdnet2ip drop\n");
                 }
