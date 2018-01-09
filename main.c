@@ -74,6 +74,11 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
+    {
+        int init_addr(void);
+        init_addr();
+    }
+
     uart_fd = cdnet_init();
     maxfd = max(tun_fd, uart_fd);
 

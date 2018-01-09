@@ -107,11 +107,12 @@ static void dummy_set_filter(cd_intf_t *intf, uint8_t filter)
         if (!node)
             return;
         cdnet_packet_t *pkt = container_of(node, cdnet_packet_t, node);
-        pkt->is_local = true;
+        pkt->is_level2 = false;
+        pkt->is_multi_net = false;
+        pkt->is_multicast = false;
         cdnet_fill_src_addr(&net_setting_intf, pkt);
         pkt->dst_mac = 0x55;
-        pkt->pkt_type = PKT_TYPE_UDP;
-        pkt->src_port = CDNET_BASIC_PORT;
+        pkt->src_port = CDNET_DEF_PORT;
         pkt->dst_port = PASSTHRU_CONF_PORT; // set filter
         pkt->dat_len = 1;
         pkt->dat[0] = filter;

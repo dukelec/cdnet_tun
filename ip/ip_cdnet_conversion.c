@@ -22,204 +22,320 @@
 #include "ip.h"
 #include "ip_checksum.h"
 
-uint8_t local_ip[16] = {0xfc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+// ipv4:
 
-int ip2cdnet(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
+// ipv4_self
+// default_router4
+// has_router4
+
+// ipv4 addr: 192.168.xx.xx -> first xx is net, second xx is id
+// ipv4 only for level2
+
+
+// ipv6:
+
+// default_router6: route to the addr if dst_addr is for different net
+// has_router6
+
+// local link:
+//   fe80::0000:0000:00ff:fe00:00xx -> level 2
+//   fe80::cd00:0000:00ff:fe00:00xx -> level 0 / 1
+// unique local:
+//   subnet-id + iid: 00xx + 0000:00ff:fe00:00xx -> level 2
+//   subnet-id + iid: cdxx + 0000:00ff:fe00:00xx -> level 0 / 1
+// global unicast:
+//   iid -> 0000:00ff:fe00:00xx -> level 2
+//
+// Notes:
+//   src and dst should be same level except multicast
+//   multicast level is depend on src level
+
+
+static struct in_addr _ipv4_self = {0};
+static struct in_addr _default_router4 = {0};
+
+struct in_addr *ipv4_self = &_ipv4_self;
+struct in_addr *default_router4 = &_default_router4;
+bool has_router4 = false;
+
+
+static struct in6_addr _unique_self = {0};
+static struct in6_addr _global_self = {0};
+static struct in6_addr _default_router6 = {0};
+
+struct in6_addr *unique_self = &_unique_self;
+struct in6_addr *global_self = &_global_self;
+struct in6_addr *default_router6 = &_default_router6;
+bool has_router6 = false;
+
+
+int init_addr(void)
+{
+    int ret;
+    ret = inet_pton(AF_INET, "192.168.100.1", &ipv4_self->s_addr);
+    if (ret != 1)
+        return -1;
+    ret = inet_pton(AF_INET6, "fd00::ff:fe00:0", &unique_self->s6_addr);
+    if (ret != 1)
+        return -1;
+    return 0;
+}
+
+static inline bool is_cdnet_link_local(struct in6_addr *addr)
+{
+    if (addr->s6_addr32[0] == 0x000080fe &&
+            (addr->s6_addr32[1] & 0xff00ffff) == 0 &&
+            addr->s6_addr32[2] == 0xff000000 &&
+            (addr->s6_addr32[3] & 0x00ffffff) == 0x000000fe &&
+            (addr->s6_addr[6] == 0 || addr->s6_addr[6] == 0xcd)) {
+        return true;
+    }
+    return false;
+}
+
+static inline
+bool is_cdnet_unique_local(struct in6_addr *addr, struct in6_addr *self)
+{
+    if ((self->s6_addr[0] & 0xfe) != 0xfc)
+        return false;
+
+    if (addr->s6_addr32[0] == self->s6_addr32[0] &&
+            (addr->s6_addr32[1] & 0x0000ffff) == self->s6_addr32[1] &&
+            addr->s6_addr32[2] == 0xff000000 &&
+            (addr->s6_addr32[3] & 0x00ffffff) == 0x000000fe &&
+            (addr->s6_addr[6] == 0 || addr->s6_addr[6] == 0xcd)) {
+        return true;
+    }
+    return false;
+}
+
+static inline
+bool is_cdnet_global_local(struct in6_addr *addr, struct in6_addr *self)
+{
+    if (addr->s6_addr32[0] == self->s6_addr32[0] &&
+            addr->s6_addr32[1] == self->s6_addr32[1] &&
+            addr->s6_addr32[2] == 0xff000000 &&
+            self->s6_addr32[2] == 0xff000000 &&
+            (addr->s6_addr32[3] & 0x00ffffff) == 0x000000fe &&
+            (self->s6_addr32[3] & 0x00ffffff) == 0x000000fe) {
+        return true;
+    }
+    return false;
+}
+
+static inline bool is_cdnet_multicast(struct in6_addr *addr)
+{
+    // support only ff02::1 and ff05::1 at now
+    if ((addr->s6_addr32[0] & 0xffff00ff) == 0x000000ff &&
+            addr->s6_addr32[1] == 0 &&
+            addr->s6_addr32[2] == 0 &&
+            addr->s6_addr32[3] == 0x01000000 &&
+            (addr->s6_addr[1] == 5 || addr->s6_addr[1] == 2)) {
+        return true;
+    }
+    return false;
+}
+
+
+int ip2cdnet(cdnet_intf_t *intf, cdnet_packet_t *pkt,
         const uint8_t *ip_dat, int ip_len)
 {
     struct ipv6 *ipv6 = (struct ipv6 *)ip_dat;
-    uint8_t *src_ip = ipv6->src_ip.__in6_u.__u6_addr8;
-    uint8_t *dst_ip = ipv6->dst_ip.__in6_u.__u6_addr8;
+    struct ipv4 *ipv4 = (struct ipv4 *)ip_dat;
+
+    pkt->in_fragment = false;
+    pkt->is_multi_net = false;
+    pkt->is_multicast = false;
+    pkt->is_compressed = false;
+
+    if (ipv4->version == 4) {
+        pkt->is_level2 = true;
+        pkt->src_mac = ipv4_self->s_addr >> 24;
+
+        if ((ipv4->dst_ip.s_addr & 0x00ffffff) ==
+                (ipv4_self->s_addr & 0x00ffffff)) {
+            // local net
+            d_debug("< ip4: direct send...\n");
+            pkt->dst_mac = ipv4->dst_ip.s_addr >> 24;
+        } else if (has_router4) {
+            d_debug("< ip4: send to router...\n");
+            pkt->dst_mac = default_router4->s_addr >> 24;
+        } else {
+            d_debug("< ip4: no router, skip...\n");
+            return -1;
+        }
+        memcpy(pkt->dat, ip_dat, ip_len);
+        pkt->dat_len = ip_len;
+        return 0;
+    }
 
     if (ipv6->version != 6) {
-        d_error("< ip: version != 6: %d\n", ipv6->version);
+        d_error("< ip: wrong ip version: %d\n", ipv6->version);
+        return -1;
+    }
+    if (IN6_IS_ADDR_UNSPECIFIED(&ipv6->src_ip)) {
+        d_verbose("< ip: skip UNSPECIFIED ADDR...\n");
+        return -1;
+    }
+    if (IN6_IS_ADDR_MULTICAST(&ipv6->dst_ip) &&
+            !is_cdnet_multicast(&ipv6->dst_ip)) {
+        d_verbose("< ip: skip un-support multicast...\n");
         return -1;
     }
 
-    d_verbose("< ip: checksum: %04x\n",
-            tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
-                    ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len)));
+    if (is_cdnet_link_local(&ipv6->src_ip)) {
+        // link local
+        pkt->src_mac = ipv6->src_ip.s6_addr[15];
+        pkt->is_level2 = (ipv6->src_ip.s6_addr[6] == 0);
 
-    // avoid global unicast and unspecified address
-    if ((*src_ip & 0xfc) != 0xfc || (*dst_ip & 0xfc) != 0xfc) {
-        d_debug("< ip: skip: src_ip[0]: %02x, dst_ip[0]: %02x\n",
-                *src_ip, *dst_ip);
-        return -1;
-    }
-    n_pkt->src_mac = *(src_ip + 15);
-    if (n_pkt->src_mac != n_intf->mac) {
-        d_error("< ip: src_mac != intf->mac\n");
-        return -1;
-    }
-    if (*dst_ip == 0xff) {
-        n_pkt->dst_mac = 0xff;
-        if (*(dst_ip + 12) != 0) {
-            d_debug("< ip: skip solicited multicast\n");
+        if (is_cdnet_link_local(&ipv6->dst_ip)) {
+            d_verbose("< ip: link_local: direct...\n");
+            pkt->dst_mac = ipv6->dst_ip.s6_addr[15];
+        } else if (is_cdnet_multicast(&ipv6->dst_ip)) {
+            d_verbose("< ip: link_local: multicast...\n");
+            pkt->dst_mac = 255;
+        } else {
+            d_error("< ip: link_local: wrong dst addr...\n");
             return -1;
         }
-        d_debug("< ip: multicast (treat as broadcast)\n");
+
+        if (ipv6->src_ip.s6_addr[15] != unique_self->s6_addr[15]) {
+            d_error("< ip: link_local id != unique_self id\n");
+            return -1;
+        }
+
+    } else if (is_cdnet_unique_local(&ipv6->src_ip, unique_self)) {
+        // unique local
+        pkt->src_mac = unique_self->s6_addr[15];
+        pkt->is_level2 = (ipv6->src_ip.s6_addr[6] == 0);
+        pkt->is_multi_net = true;
+        pkt->src_addr[0] = ipv6->src_ip.s6_addr[7];
+        pkt->src_addr[1] = ipv6->src_ip.s6_addr[15];
+
+        if (is_cdnet_unique_local(&ipv6->dst_ip, unique_self)) {
+            pkt->dst_addr[0] = ipv6->dst_ip.s6_addr[7];
+            pkt->dst_addr[1] = ipv6->dst_ip.s6_addr[15];
+
+            if (ipv6->dst_ip.s6_addr[7] == unique_self->s6_addr[7]) {
+                d_debug("< ip: unique_local: direct...\n");
+                pkt->dst_mac = ipv6->dst_ip.s6_addr[15];
+            } else if (has_router6) {
+                d_debug("< ip: unique_local: send to router...\n");
+                pkt->dst_mac = default_router6->s6_addr[15];
+            } else {
+                d_debug("< ip: unique_local: no router, skip...\n");
+                return -1;
+            }
+
+        } else if (is_cdnet_multicast(&ipv6->dst_ip)) {
+            d_verbose("< ip: unique_local: not support multicast yet...\n");
+            return -1;
+        } else {
+            d_error("< ip: unique_local: wrong dst addr...\n");
+            return -1;
+        }
+
     } else {
-        n_pkt->dst_mac = *(dst_ip + 15);
-        if (n_pkt->dst_mac == n_intf->mac || n_pkt->dst_mac == 0xff) {
-            d_error("< ip: wrong dst_mac: %02x\n", n_pkt->dst_mac);
+        pkt->src_mac = unique_self->s6_addr[15];
+        pkt->is_level2 = true;
+
+        if (is_cdnet_multicast(&ipv6->dst_ip)) {
+            d_verbose("< ip: other: multicast...\n");
+            pkt->dst_mac = 255;
+        } if (is_cdnet_global_local(&ipv6->dst_ip, global_self)) {
+            d_verbose("< ip: other: direct...\n");
+            pkt->dst_mac = ipv6->dst_ip.s6_addr[15];
+        } else if (has_router6) {
+            d_debug("< ip: other: send to router...\n");
+            pkt->dst_mac = default_router6->s6_addr[15];
+        } else {
+            d_debug("< ip: other: no router, skip...\n");
             return -1;
         }
     }
 
-    n_pkt->is_local = true;
-    n_pkt->is_multicast = false;
-    n_pkt->in_fragment = false;
-    n_pkt->is_compressed = false;
-
-    if (ipv6->next_header == IPPROTO_UDP) {
-        struct udp *udp = (struct udp *)(ip_dat + 40);
-        n_pkt->pkt_type = PKT_TYPE_UDP;
-        n_pkt->src_port = ntohs(udp->src_port);
-        n_pkt->dst_port = ntohs(udp->dst_port);
-        n_pkt->dat_len = ntohs(udp->len) - 8; // 8: udp header
-        memcpy(n_pkt->dat, ip_dat + 40 + 8, n_pkt->dat_len);
-        d_verbose("< udp port: %d -> %d, dat_len: %d\n",
-                n_pkt->src_port, n_pkt->dst_port, n_pkt->dat_len);
+    if (pkt->is_level2) {
+        memcpy(pkt->dat, ip_dat, ip_len);
+        pkt->dat_len = ip_len;
         return 0;
+    }
 
-    } else if (ipv6->next_header == IPPROTO_TCP) {
-        struct tcp *tcp = (struct tcp *)(ip_dat + 40);
-        n_pkt->pkt_type = PKT_TYPE_TCP;
-        n_pkt->src_port = ntohs(tcp->src_port);
-        n_pkt->dst_port = ntohs(tcp->dst_port);
-        n_pkt->dat_len = ntohs(ipv6->payload_len) - 4; // 4: src & dst port
-        memcpy(n_pkt->dat, ip_dat + 40 + 4, n_pkt->dat_len);
-        d_verbose("< tcp port: %d -> %d, dat_len: %d\n",
-                n_pkt->src_port, n_pkt->dst_port, n_pkt->dat_len);
-        return 0;
-
-    } else if (ipv6->next_header == IPPROTO_ICMPV6) {
-        struct icmpv6 *icmp = (struct icmpv6 *)(ip_dat + 40);
-        n_pkt->pkt_type = PKT_TYPE_ICMP;
-        n_pkt->src_port = icmp->type;
-        n_pkt->dst_port = icmp->code;
-        n_pkt->dat_len = ntohs(ipv6->payload_len) - 4; // 4: icmp header
-        memcpy(n_pkt->dat, ip_dat + 40 + 4, n_pkt->dat_len);
-        d_verbose("< icmp: type: %d; code: %d\n", icmp->type, icmp->code);
-        return 0;
-
-    } else if (ipv6->next_header == IPPROTO_HOPOPTS) {
-        d_warn("< skip Hop-by-Hop\n");
-        return -1;
-    } else {
-        d_warn("< un-support header!!!\n");
+    if (ipv6->next_header != IPPROTO_UDP) {
+        d_warn("< ip: not UDP, skip...\n");
         return -1;
     }
 
-    return -1;
+    struct udp *udp = (struct udp *)(ip_dat + 40);
+    pkt->src_port = ntohs(udp->src_port);
+    pkt->dst_port = ntohs(udp->dst_port);
+    pkt->dat_len = ntohs(udp->len) - 8; // 8: udp header
+    memcpy(pkt->dat, ip_dat + 40 + 8, pkt->dat_len);
+    d_verbose("< ip: l0_l1: udp port: %d -> %d, dat_len: %d\n",
+            pkt->src_port, pkt->dst_port, pkt->dat_len);
+    return 0;
 }
 
-int cdnet2ip(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
+int cdnet2ip(cdnet_intf_t *intf, cdnet_packet_t *pkt,
         uint8_t *ip_dat, int *ip_len)
 {
     struct ipv6 *ipv6 = (struct ipv6 *)ip_dat;
-    uint8_t *src_ip = ipv6->src_ip.__in6_u.__u6_addr8;
-    uint8_t *dst_ip = ipv6->dst_ip.__in6_u.__u6_addr8;
+    struct udp *udp = (struct udp *)(ip_dat + 40);
+
+    if (pkt->is_level2) {
+        memcpy(ip_dat, pkt->dat, pkt->dat_len);
+        return 0;
+    }
 
     ipv6->version = 6;
     ipv6->traffic_class_hi = 0;
     ipv6->traffic_class_lo = 0;
     ipv6->flow_label_hi = 0;
     ipv6->flow_label_lo = htons(0);
-
     ipv6->hop_limit = 255;
 
-    if (!n_pkt->is_local || n_pkt->in_fragment
-            || n_pkt->is_compressed || n_pkt->in_fragment
-            || n_pkt->is_multicast) {
-        d_error("> ip: un-support package\n");
-        return -1;
-    }
+    if (pkt->dst_mac == 255)
+        inet_pton(AF_INET6, "ff02::01", ipv6->dst_ip.s6_addr);
 
-    memcpy(src_ip, local_ip, 15);
-    *(src_ip + 15) = n_pkt->src_mac;
-    if (n_pkt->src_mac == n_intf->mac) {
-        d_error("> ip: src_mac == intf->mac\n");
-        return -1;
-    }
-    if (n_pkt->src_mac == 255) {
-        d_error("> ip: src_mac == 255\n");
-        return -1;
-    }
-    memcpy(dst_ip, local_ip, 15);
-    if (n_pkt->dst_mac == 255) {
-        *src_ip = 0xff;
-        *(src_ip + 1) = 0x02;
-        *(src_ip + 15) = 0x01;
-        d_debug("> ip: broadcast\n");
-    } else {
-        *(src_ip + 15) = n_pkt->dst_mac;
-        if (n_pkt->dst_mac != n_intf->mac) {
-            d_error("> ip: dst_mac != intf->mac\n");
+    if (pkt->is_multi_net) { // unique local
+        memcpy(ipv6->src_ip.s6_addr, unique_self->s6_addr, 16);
+        ipv6->src_ip.s6_addr[6] = 0xcd;
+        ipv6->src_ip.s6_addr[7] = pkt->src_addr[0];
+        ipv6->src_ip.s6_addr[15] = pkt->src_addr[1];
+
+        if (pkt->is_multicast) {
+            d_error("> ip: multicast not support yet\n");
             return -1;
+        }
+
+        if (pkt->dst_mac != 255) {
+            memcpy(ipv6->dst_ip.s6_addr, unique_self->s6_addr, 16);
+            ipv6->dst_ip.s6_addr[6] = 0xcd;
+            ipv6->dst_ip.s6_addr[7] = pkt->dst_addr[0];
+            ipv6->dst_ip.s6_addr[15] = pkt->dst_addr[1];
+        }
+    } else { // local link
+        inet_pton(AF_INET6, "fe80::cd00:0:ff:fe00:0", ipv6->src_ip.s6_addr);
+        ipv6->src_ip.s6_addr[15] = pkt->src_mac;
+        if (pkt->dst_mac != 255) {
+            inet_pton(AF_INET6, "fe80::cd00:0:ff:fe00:0", ipv6->dst_ip.s6_addr);
+            ipv6->dst_ip.s6_addr[15] = pkt->dst_mac;
         }
     }
 
-    if (n_pkt->pkt_type == IPPROTO_UDP) {
-        struct udp *udp = (struct udp *)(ip_dat + 40);
-        ipv6->next_header = PKT_TYPE_UDP;
-        udp->src_port = htons(n_pkt->src_port);
-        udp->dst_port = htons(n_pkt->dst_port);
-        udp->check = 0;
-        udp->len = htons(n_pkt->dat_len + 8);
-        ipv6->payload_len = udp->len;
-        *ip_len = n_pkt->dat_len + 8 + 40;
+    ipv6->next_header = IPPROTO_UDP;
+    udp->src_port = htons(pkt->src_port);
+    udp->dst_port = htons(pkt->dst_port);
+    udp->check = 0;
+    udp->len = htons(pkt->dat_len + 8);
+    ipv6->payload_len = udp->len;
+    *ip_len = pkt->dat_len + 8 + 40;
 
-        memcpy(ip_dat + 40 + 8, n_pkt->dat, n_pkt->dat_len);
+    memcpy(ip_dat + 40 + 8, pkt->dat, pkt->dat_len);
 
-        udp->check = tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
-                ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len));
+    udp->check = tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
+            ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len));
 
-        d_verbose("> udp port: %d -> %d, dat_len: %d, cksum: %04x\n",
-                n_pkt->src_port, n_pkt->dst_port, n_pkt->dat_len, udp->check);
-        return 0;
-
-    } else if (n_pkt->pkt_type == IPPROTO_TCP) {
-        struct tcp *tcp = (struct tcp *)(ip_dat + 40);
-        ipv6->next_header = PKT_TYPE_TCP;
-        tcp->src_port = htons(n_pkt->src_port);
-        tcp->dst_port = htons(n_pkt->dst_port);
-        tcp->check = 0;
-        ipv6->payload_len = htons(n_pkt->dat_len + 4); // 4: src & dst port
-        *ip_len = n_pkt->dat_len + 4 + 40;
-
-        memcpy(ip_dat + 40 + 4, n_pkt->dat, n_pkt->dat_len);
-
-        tcp->check = tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
-                ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len));
-
-        d_verbose("> tcp port: %d -> %d, dat_len: %d, cksum: %04x\n",
-                n_pkt->src_port, n_pkt->dst_port, n_pkt->dat_len, tcp->check);
-        return 0;
-
-    } else if (n_pkt->pkt_type == IPPROTO_ICMP) {
-        struct icmpv6 *icmp = (struct icmpv6 *)(ip_dat + 40);
-        ipv6->next_header = PKT_TYPE_ICMP;
-        icmp->type = n_pkt->src_port;
-        icmp->code = n_pkt->dst_port;
-        icmp->checksum = 0;
-        ipv6->payload_len = htons(n_pkt->dat_len + 4);
-        *ip_len = n_pkt->dat_len + 4 + 40;
-
-        memcpy(ip_dat + 40 + 4, n_pkt->dat, n_pkt->dat_len);
-
-        icmp->checksum = tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
-                ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len));
-
-        d_verbose("> icmp type: %d, code: %d, dat_len: %d, cksum: %04x\n",
-                n_pkt->src_port, n_pkt->dst_port, n_pkt->dat_len, icmp->checksum);
-        return 0;
-
-    } else {
-        d_error("> un-support cdnet packet\n");
-        return -1;
-    }
-
-    return -1;
+    d_verbose("> ip: l0_l1: udp port: %d -> %d, dat_len: %d, cksum: %04x\n",
+            pkt->src_port, pkt->dst_port, pkt->dat_len, udp->check);
+    return 0;
 }

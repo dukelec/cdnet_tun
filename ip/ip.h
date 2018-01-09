@@ -31,6 +31,27 @@
 
 #include <netinet/in.h>
 
+struct ipv4 {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+    __u8    ihl:4,
+        version:4;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+    __u8    version:4,
+        ihl:4;
+#else
+# error "Please fix endianness defines"
+#endif
+    __u8    tos;
+    __be16  tot_len;
+    __be16  id;
+    __be16  frag_off;
+    __u8    ttl;
+    __u8    protocol;
+    __sum16 check;
+    struct in_addr  src_ip;
+    struct in_addr  dst_ip;
+};
+
 struct ipv6 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	__u8			traffic_class_hi:4,
@@ -56,29 +77,6 @@ struct ipv6 {
 	struct	in6_addr	dst_ip;
 };
 
-
-/* ICMPv6 hader. See RFC 4443. */
-struct icmpv6 {
-	__u8		type;
-	__u8		code;
-	__sum16		checksum;
-	union {
-		struct {
-			__be32	unused;
-		} unreachable;
-		struct {
-			__be32	mtu;
-		} packet_too_big;
-		struct {
-			__be32	unused;
-		} time_exceeded;
-		struct {
-			__be32	pointer;
-		} parameter_problem;
-	} message;
-};
-
-
 /* UDP header. See RFC 768. */
 struct udp {
 	__be16	src_port;
@@ -88,43 +86,6 @@ struct udp {
 };
 
 
-/* A portable TCP header definition (Linux and *BSD use different names). */
-struct tcp {
-	__be16	src_port;
-	__be16	dst_port;
-	__be32	seq;
-	__be32	ack_seq;
-#  if __BYTE_ORDER == __LITTLE_ENDIAN
-	__u16	res1:2,
-		res2:2,
-		doff:4,
-		fin:1,
-		syn:1,
-		rst:1,
-		psh:1,
-		ack:1,
-		urg:1,
-		ece:1,
-		cwr:1;
-#  elif __BYTE_ORDER == __BIG_ENDIAN
-	__u16	doff:4,
-		res2:2,
-		res1:2,
-		cwr:1,
-		ece:1,
-		urg:1,
-		ack:1,
-		psh:1,
-		rst:1,
-		syn:1,
-		fin:1;
-#  else
-#   error "Adjust your defines"
-#  endif
-	__be16	window;
-	__sum16	check;
-	__be16	urg_ptr;
-};
 
 void dump_ip (void *addr, int len);
 
