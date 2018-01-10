@@ -21,7 +21,7 @@
 uart_t debug_uart = { .is_stdout = true };
 static uart_t share_uart = { .fd = -1, .port = NULL, .is_stdout = false };
 
-#define CD_FRAME_MAX 10
+#define CD_FRAME_MAX 200
 static cd_frame_t cd_frame_alloc[CD_FRAME_MAX];
 static list_head_t cd_free_head = {0};
 
@@ -90,7 +90,7 @@ static void dummy_put_tx_node(cd_intf_t *intf, list_node_t *node)
     } else if (intf == &cd_proxy_intf) {
         cd_frame_t *frame = container_of(node, cd_frame_t, node);
         int i, l = frame->dat[2] + 2;
-        for (i = l - 1; i >= 3; i--)
+        for (i = l; i >= 3; i--)
             frame->dat[i + 2] = frame->dat[i];
         memcpy(frame->dat + 3, frame->dat, 2);
         frame->dat[0] = 0xaa;
@@ -173,6 +173,7 @@ void cdnet_task_tx(void)
 {
     cdnet_tx(&net_setting_intf);
     cdnet_tx(&net_proxy_intf);
-    cduart_tx_task(&cdshare_intf);
+    while (cdshare_intf.tx_head.first != NULL)
+        cduart_tx_task(&cdshare_intf);
 }
 

@@ -215,9 +215,9 @@ int main(int argc, char *argv[]) {
 
                 ret = cdnet2ip(&net_proxy_intf, pkt, ip_dat, &ip_len);
                 if (ret == 0) {
-                    d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
                     hex_dump("write to tun", ip_dat, ip_len);
                     nwrite = cwrite(tun_fd, ip_dat, ip_len);
+                    d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
                 } else {
                     d_debug(">>>: cdnet2ip drop\n");
                 }

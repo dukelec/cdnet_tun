@@ -43,7 +43,7 @@ OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
 
 I_INCLUDES = $(foreach includedir,$(INCLUDES),-I$(includedir))
-CFLAGS = $(I_INCLUDES) -DSW_VER=\"$(GIT_VERSION)\" -DVERBOSE
+CFLAGS = $(I_INCLUDES) -DSW_VER=\"$(GIT_VERSION)\" -DVERBOSE -DCDNET_MAX_SIZE=2000
 LDFLAGS =
 
 DEPS = $(foreach includedir,$(INCLUDES),$(wildcard $(includedir)/*.h))
