@@ -11,6 +11,7 @@ unique_self="fd00::ff:fe00:0"
 
 ./cdnet_tun --mac="$mac" --unique_self="$unique_self" &
 
+sleep 0.1
 echo "bring tun0 to up, and set ip to it"
 
 ip link set tun0 up
