@@ -202,12 +202,11 @@ int main(int argc, char *argv[]) {
                 printf("nread: %d\n", nread);
                 hex_dump(NULL, ip_dat, nread);
 
-                list_node_t *node = list_get(net_proxy_intf.free_head);
-                if (!node) {
+                cdnet_packet_t *pkt = cdnet_packet_get(net_proxy_intf.free_head);
+                if (!pkt) {
                     d_error("no free pkt for tx\n");
                     exit(-1);
                 }
-                cdnet_packet_t *pkt = container_of(node, cdnet_packet_t, node);
 
                 ret = ip2cdnet(&net_proxy_intf, pkt, ip_dat, nread);
 
@@ -220,12 +219,11 @@ int main(int argc, char *argv[]) {
                         }
                         int frag_at = 0;
                         while (true) {
-                            list_node_t *nd = list_get(net_proxy_intf.free_head);
-                            if (!nd) {
+                            cdnet_packet_t *frag_pkt = cdnet_packet_get(net_proxy_intf.free_head);
+                            if (!frag_pkt) {
                                 d_error("no free pkt for frag\n");
                                 exit(-1);
                             }
-                            cdnet_packet_t *frag_pkt = container_of(nd, cdnet_packet_t, node);
                             memcpy(frag_pkt, pkt, offsetof(cdnet_packet_t, len));
                             int cpy_len = min(251, pkt->len - frag_at);
                             memcpy(frag_pkt->dat, pkt->dat + frag_at, cpy_len);
@@ -237,34 +235,33 @@ int main(int argc, char *argv[]) {
                             else
                                 frag_pkt->frag = CDNET_FRAG_MORE;
                             frag_at += cpy_len;
-                            list_put(&net_proxy_intf.tx_head, nd);
+                            list_put(&net_proxy_intf.tx_head, &frag_pkt->node);
 
                             if (frag_at == pkt->len) {
-                                list_put(net_proxy_intf.free_head, node);
+                                list_put(net_proxy_intf.free_head, &pkt->node);
                                 break;
                             }
                         }
 
                     } else {
-                        list_put(&net_proxy_intf.tx_head, node);
+                        list_put(&net_proxy_intf.tx_head, &pkt->node);
                     }
                 } else {
                     d_debug("<<<: ip2cdnet drop\n");
-                    list_put(net_proxy_intf.free_head, node);
+                    list_put(net_proxy_intf.free_head, &pkt->node);
                 }
 
                 cdnet_tx(&net_setting_intf);
                 cdnet_tx(&net_proxy_intf);
                 while (cdshare_intf.tx_head.first != NULL) {
-                    list_node_t *nd = list_get(&cdshare_intf.tx_head);
-                    cd_frame_t *frame = container_of(nd, cd_frame_t, node);
+                    cd_frame_t *frame = list_get_entry(&cdshare_intf.tx_head, cd_frame_t);
                     cduart_fill_crc(frame->dat);
                     int ret = write(uart_fd, frame->dat, frame->dat[2] + 5);
                     if (ret != frame->dat[2] + 5) {
                         d_error("err: write uart len: %d, ret: %d\n", frame->dat[2] + 5, ret);
                         exit(1);
                     }
-                    list_put(cdshare_intf.free_head, nd);
+                    list_put(cdshare_intf.free_head, &frame->node);
                 }
             }
         }
@@ -286,16 +283,14 @@ int main(int argc, char *argv[]) {
                 cdnet_rx(&net_setting_intf);
                 cdnet_rx(&net_proxy_intf);
 
-                list_node_t *node = list_get(&net_proxy_intf.rx_head);
-                if (node) {
+                cdnet_packet_t *n_pkt = cdnet_packet_get(&net_proxy_intf.rx_head);
+                if (n_pkt) {
                     list_node_t *pre, *cur;
-                    cdnet_packet_t *t_pkt;
-                    cdnet_packet_t *n_pkt = container_of(node, cdnet_packet_t, node);
                     cdnet_packet_t *conv_pkt = NULL;
 
                     if (n_pkt->level == CDNET_L2 && n_pkt->frag) {
                         list_for_each(&frag_pend_head, pre, cur) {
-                            t_pkt = container_of(cur, cdnet_packet_t, node);
+                            cdnet_packet_t *t_pkt = list_entry(cur, cdnet_packet_t);
                             if (t_pkt->src_mac == n_pkt->src_mac) {
                                 t_pkt->_seq_num = (t_pkt->_seq_num + 1) & 0x7f;
                                 if (t_pkt->_seq_num != n_pkt->_seq_num ||
@@ -310,7 +305,7 @@ int main(int argc, char *argv[]) {
                                     list_pick(&frag_pend_head, pre, cur);
                                     conv_pkt = t_pkt;
                                 }
-                                list_put(net_proxy_intf.free_head, node); // free n_pkt
+                                list_put(net_proxy_intf.free_head, &n_pkt->node);
                                 break;
                             }
                         }
@@ -319,7 +314,7 @@ int main(int argc, char *argv[]) {
                                 d_error("first fragment is not CDNET_FRAG_FIRST\n");
                                 exit(-1);
                             }
-                            list_put(&frag_pend_head, node);
+                            list_put(&frag_pend_head, &n_pkt->node);
                         }
                     } else { // convert single t_pkt
                         conv_pkt = n_pkt;

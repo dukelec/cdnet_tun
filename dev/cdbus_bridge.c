@@ -32,28 +32,26 @@ cdnet_intf_t net_proxy_intf = {0};
 cdnet_intf_t net_setting_intf = {0};
 
 
-static list_node_t *dummy_get_free_node(cd_intf_t *_)
+static cd_frame_t *dummy_get_free_frame(cd_intf_t *_)
 {
-    return cdshare_intf.cd_intf.get_free_node(&cdshare_intf.cd_intf);
+    return cdshare_intf.cd_intf.get_free_frame(&cdshare_intf.cd_intf);
 }
 
-static void dummy_put_free_node(cd_intf_t *_, list_node_t *node)
+static void dummy_put_free_frame(cd_intf_t *_, cd_frame_t *frame)
 {
-    cdshare_intf.cd_intf.put_free_node(&cdshare_intf.cd_intf, node);
+    cdshare_intf.cd_intf.put_free_frame(&cdshare_intf.cd_intf, frame);
 }
 
-static list_node_t *dummy_get_rx_node(cd_intf_t *intf)
+static cd_frame_t *dummy_get_rx_frame(cd_intf_t *intf)
 {
     while (true) {
-        list_node_t *node =
-                cdshare_intf.cd_intf.get_rx_node(&cdshare_intf.cd_intf);
-        if (!node)
+        cd_frame_t *frame = cdshare_intf.cd_intf.get_rx_frame(&cdshare_intf.cd_intf);
+        if (!frame)
             break;
-        cd_frame_t *frame = container_of(node, cd_frame_t, node);
 
         if (frame->dat[0] == 0x55) {
             d_debug("dummy: 55 rx done\n");
-            list_put(&cd_setting_head, node);
+            list_put(&cd_setting_head, &frame->node);
         } else if (frame->dat[0] == 0x56) {
             uint8_t i;
             frame->dat[2] -= 2;
@@ -61,27 +59,26 @@ static list_node_t *dummy_get_rx_node(cd_intf_t *intf)
             for (i = 0; i < frame->dat[2]; i++)
                 frame->dat[i + 3] = frame->dat[i + 5];
             d_debug("dummy: 56 rx done\n");
-            list_put(&cd_proxy_head, node);
+            list_put(&cd_proxy_head, &frame->node);
         } else {
             d_debug("dummy: skip rx from !0x55 && !0x56\n");
-            dummy_put_free_node(NULL, node);
+            dummy_put_free_frame(NULL, frame);
         }
     }
 
     if (intf == &cd_setting_intf)
-        return list_get(&cd_setting_head);
+        return list_get_entry(&cd_setting_head, cd_frame_t);
     if (intf == &cd_proxy_intf)
-        return list_get(&cd_proxy_head);
+    return list_get_entry(&cd_proxy_head, cd_frame_t);
     return NULL;
 }
 
-static void dummy_put_tx_node(cd_intf_t *intf, list_node_t *node)
+static void dummy_put_tx_frame(cd_intf_t *intf, cd_frame_t *frame)
 {
     if (intf == &cd_setting_intf) {
-        cdshare_intf.cd_intf.put_tx_node(&cdshare_intf.cd_intf, node);
+        cdshare_intf.cd_intf.put_tx_frame(&cdshare_intf.cd_intf, frame);
 
     } else if (intf == &cd_proxy_intf) {
-        cd_frame_t *frame = container_of(node, cd_frame_t, node);
         int i, l = frame->dat[2] + 2;
         for (i = l; i >= 3; i--)
             frame->dat[i + 2] = frame->dat[i];
@@ -89,17 +86,16 @@ static void dummy_put_tx_node(cd_intf_t *intf, list_node_t *node)
         frame->dat[0] = 0xaa;
         frame->dat[1] = 0x56;
         frame->dat[2] = l;
-        cdshare_intf.cd_intf.put_tx_node(&cdshare_intf.cd_intf, node);
+        cdshare_intf.cd_intf.put_tx_frame(&cdshare_intf.cd_intf, frame);
     }
 }
 
 static void dummy_set_filter(cd_intf_t *intf, uint8_t filter)
 {
     if (intf == &cd_proxy_intf) {
-        list_node_t *node = list_get(net_setting_intf.free_head);
-        if (!node)
+        cdnet_packet_t *pkt = cdnet_packet_get(net_setting_intf.free_head);
+        if (!pkt)
             return;
-        cdnet_packet_t *pkt = container_of(node, cdnet_packet_t, node);
         pkt->level = CDNET_L0;
         cdnet_fill_src_addr(&net_setting_intf, pkt);
         pkt->dst_mac = 0x55;
@@ -109,7 +105,7 @@ static void dummy_set_filter(cd_intf_t *intf, uint8_t filter)
         pkt->dat[0] = 0x08; // set mac address for interface
         pkt->dat[1] = 0;    // 0: INTF_RS485
         pkt->dat[2] = filter;
-        list_put(&net_setting_intf.tx_head, node);
+        list_put(&net_setting_intf.tx_head, &pkt->node);
         d_info("sent set filter frame\n");
     }
 }
@@ -130,19 +126,21 @@ void cdbus_bridge_init(cdnet_addr_t *addr)
     cdshare_intf.remote_filter[1] = 0x56;
     cdshare_intf.remote_filter_len = 2;
 
-    cd_setting_intf.get_free_node = dummy_get_free_node;
-    cd_setting_intf.get_rx_node = dummy_get_rx_node;
-    cd_setting_intf.put_free_node = dummy_put_free_node;
-    cd_setting_intf.put_tx_node = dummy_put_tx_node;
+    cd_setting_intf.get_free_frame = dummy_get_free_frame;
+    cd_setting_intf.get_rx_frame = dummy_get_rx_frame;
+    cd_setting_intf.put_free_frame = dummy_put_free_frame;
+    cd_setting_intf.put_tx_frame = dummy_put_tx_frame;
     cd_setting_intf.set_filter = dummy_set_filter;
 
-    cd_proxy_intf.get_free_node = dummy_get_free_node;
-    cd_proxy_intf.get_rx_node = dummy_get_rx_node;
-    cd_proxy_intf.put_free_node = dummy_put_free_node;
-    cd_proxy_intf.put_tx_node = dummy_put_tx_node;
+    cd_proxy_intf.get_free_frame = dummy_get_free_frame;
+    cd_proxy_intf.get_rx_frame = dummy_get_rx_frame;
+    cd_proxy_intf.put_free_frame = dummy_put_free_frame;
+    cd_proxy_intf.put_tx_frame = dummy_put_tx_frame;
     cd_proxy_intf.set_filter = dummy_set_filter;
 
     cdnet_addr_t addr_aa = { .net = 0, .mac = 0xaa };
+    net_setting_intf.name = "cdnet_setting";
+    net_proxy_intf.name = "cdnet_proxy";
     cdnet_intf_init(&net_setting_intf, &net_free_head, &cd_setting_intf, &addr_aa);
     cdnet_intf_init(&net_proxy_intf, &net_free_head, &cd_proxy_intf, addr);
 
