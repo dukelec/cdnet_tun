@@ -106,6 +106,7 @@ static void dummy_set_filter(cd_intf_t *intf, uint8_t filter)
         pkt->dat[1] = 0;    // 0: INTF_RS485
         pkt->dat[2] = filter;
         list_put(&net_setting_intf.tx_head, &pkt->node);
+        cdnet_tx(&net_setting_intf);
         d_info("sent set filter frame\n");
     }
 }

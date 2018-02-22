@@ -48,8 +48,7 @@ int cdnet2ip(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
         uint8_t *ip_dat, int *ip_len);
 
 void hex_dump(char *desc, void *addr, int len);
-int uart_set_attribs(int fd, int speed);
-void uart_set_mincount(int fd, int mcount);
+int uart_init(int fd, int speed);
 
 
 extern struct in_addr *ipv4_self;
@@ -64,9 +63,10 @@ extern bool has_router6;
 static cdnet_addr_t local_addr = { .net = 0, .mac = 0x01 };
 static char uart_dev[50] = "/dev/ttyACM0";
 static char tun_name[20] = "";
+static int uart_fd;
 
 // frag_pend for rx only, must be: level == CDNET_L2 && is_fragment
-list_head_t frag_pend_head = {0};
+static list_head_t frag_pend_head = {0};
 
 static struct option longopts[] = {
         { "self4",          required_argument, NULL,    's' },
@@ -80,17 +80,27 @@ static struct option longopts[] = {
         { 0, 0, 0, 0 }
 };
 
+static void uart_flush(void)
+{
+    while (cdshare_intf.tx_head.first != NULL) {
+        cd_frame_t *frame = list_get_entry(&cdshare_intf.tx_head, cd_frame_t);
+        cduart_fill_crc(frame->dat);
+        int ret = write(uart_fd, frame->dat, frame->dat[2] + 5);
+        if (ret != frame->dat[2] + 5) {
+            d_error("err: write uart len: %d, ret: %d\n", frame->dat[2] + 5, ret);
+            exit(1);
+        }
+        list_put(cdshare_intf.free_head, &frame->node);
+    }
+}
+
 int main(int argc, char *argv[]) {
 
-    int tun_fd, uart_fd, maxfd;
-    int ret;
-    int option;
-    uint16_t nread, nwrite, plength;
-    int flags = IFF_TUN;
-    uint8_t ip_dat[BUFSIZE];
+    int tun_fd;
+    uint8_t tmp_buf[BUFSIZE];
 
     while (true) {
-        option = getopt_long(argc, argv, "s:t:u:g:r:d:", longopts, NULL);
+        int option = getopt_long(argc, argv, "s:t:u:g:r:d:", longopts, NULL);
         if (option == -1) {
             if (optind < argc) {
                 printf ("non-option ARGV-elements: ");
@@ -161,30 +171,29 @@ int main(int argc, char *argv[]) {
     }
 
     /* initialize tun interface */
-    if ((tun_fd = tun_alloc(tun_name, flags | IFF_NO_PI)) < 0) {
-        d_error("Error connecting to tun interface %s!\n", tun_name);
+    if ((tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI)) < 0) {
+        d_error("Error connecting to tun interface: %s!\n", tun_name);
         exit(1);
     }
 
-    uart_fd = open(uart_dev, O_RDWR | O_NOCTTY | O_SYNC);
-    if (uart_set_attribs(uart_fd, B115200))
+    uart_fd = open(uart_dev, O_RDWR | O_NOCTTY);
+    if (uart_init(uart_fd, 115200)) {
+        d_error("Error init uart: %s!\n", uart_dev);
         exit(-1);
-    uart_set_mincount(uart_fd, 0);
+    }
 
     cdbus_bridge_init(&local_addr);
-    maxfd = max(tun_fd, uart_fd);
+    uart_flush();
 
     while (true) {
-        /*
+        int ret;
         fd_set rd_set;
 
         FD_ZERO(&rd_set);
         FD_SET(tun_fd, &rd_set);
         FD_SET(uart_fd, &rd_set);
 
-        cdnet_task_tx();
-
-        ret = select(maxfd + 1, &rd_set, NULL, NULL, NULL);
+        ret = select(max(tun_fd, uart_fd) + 1, &rd_set, NULL, NULL, NULL);
         if (ret < 0) {
             if (errno == EINTR) {
                 continue;
@@ -193,14 +202,12 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
         }
-        */
 
-        /*if (FD_ISSET(tun_fd, &rd_set))*/ {
-            nread = cread(tun_fd, ip_dat, BUFSIZE);
-
+        if (FD_ISSET(tun_fd, &rd_set)) {
+            int nread = cread(tun_fd, tmp_buf, BUFSIZE);
             if (nread != 0) {
                 printf("nread: %d\n", nread);
-                hex_dump(NULL, ip_dat, nread);
+                hex_dump(NULL, tmp_buf, nread);
 
                 cdnet_packet_t *pkt = cdnet_packet_get(net_proxy_intf.free_head);
                 if (!pkt) {
@@ -208,8 +215,7 @@ int main(int argc, char *argv[]) {
                     exit(-1);
                 }
 
-                ret = ip2cdnet(&net_proxy_intf, pkt, ip_dat, nread);
-
+                ret = ip2cdnet(&net_proxy_intf, pkt, tmp_buf, nread);
                 if (ret == 0) {
                     d_debug("<<<: write to proxy, tun len: %d\n", nread);
                     if (pkt->level == CDNET_L2 && pkt->len > 251) {
@@ -253,85 +259,77 @@ int main(int argc, char *argv[]) {
 
                 cdnet_tx(&net_setting_intf);
                 cdnet_tx(&net_proxy_intf);
-                while (cdshare_intf.tx_head.first != NULL) {
-                    cd_frame_t *frame = list_get_entry(&cdshare_intf.tx_head, cd_frame_t);
-                    cduart_fill_crc(frame->dat);
-                    int ret = write(uart_fd, frame->dat, frame->dat[2] + 5);
-                    if (ret != frame->dat[2] + 5) {
-                        d_error("err: write uart len: %d, ret: %d\n", frame->dat[2] + 5, ret);
-                        exit(1);
-                    }
-                    list_put(cdshare_intf.free_head, &frame->node);
-                }
+                uart_flush();
             }
         }
 
-        /* if (FD_ISSET(uart_fd, &rd_set))*/ {
-            printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-            /*while (true)*/ {
-                uint8_t uart_dat[4096];
-                int uart_len;
-                uart_len = read(uart_fd, uart_dat, 4096);
-                if (uart_len < 0) {
-                    d_error("read uart");
-                    exit(1);
-                }
-                if (uart_len != 0) {
-                    d_verbose("l: %d\n", uart_len);
-                    cduart_rx_handle(&cdshare_intf, uart_dat, uart_len);
-                }
-                cdnet_rx(&net_setting_intf);
-                cdnet_rx(&net_proxy_intf);
+        if (FD_ISSET(uart_fd, &rd_set)) {
+            int uart_len = read(uart_fd, tmp_buf, BUFSIZE);
+            if (uart_len < 0) {
+                d_error("read uart");
+                exit(1);
+            }
+            if (uart_len != 0) {
+                d_verbose("uart get len: %d\n", uart_len);
+                cduart_rx_handle(&cdshare_intf, tmp_buf, uart_len);
+            }
+            cdnet_rx(&net_setting_intf);
+            cdnet_rx(&net_proxy_intf);
 
-                cdnet_packet_t *n_pkt = cdnet_packet_get(&net_proxy_intf.rx_head);
-                if (n_pkt) {
-                    list_node_t *pre, *cur;
-                    cdnet_packet_t *conv_pkt = NULL;
+            cdnet_packet_t *s_pkt = cdnet_packet_get(&net_setting_intf.rx_head);
+            if (s_pkt) {
+                d_debug("setting_intf: get rx, free\n");
+                list_put(net_setting_intf.free_head, &s_pkt->node);
+            }
 
-                    if (n_pkt->level == CDNET_L2 && n_pkt->frag) {
-                        list_for_each(&frag_pend_head, pre, cur) {
-                            cdnet_packet_t *t_pkt = list_entry(cur, cdnet_packet_t);
-                            if (t_pkt->src_mac == n_pkt->src_mac) {
-                                t_pkt->_seq_num = (t_pkt->_seq_num + 1) & 0x7f;
-                                if (t_pkt->_seq_num != n_pkt->_seq_num ||
-                                        n_pkt->frag == CDNET_FRAG_FIRST) {
-                                    d_error("wrong frag seq: %d %d, frag: %d\n",
-                                            t_pkt->_seq_num, n_pkt->_seq_num, n_pkt->frag);
-                                    exit(-1);
-                                }
-                                memcpy(t_pkt->dat + t_pkt->len, n_pkt->dat, n_pkt->len);
-                                t_pkt->len += n_pkt->len;
-                                if (n_pkt->frag == CDNET_FRAG_LAST) {
-                                    list_pick(&frag_pend_head, pre, cur);
-                                    conv_pkt = t_pkt;
-                                }
-                                list_put(net_proxy_intf.free_head, &n_pkt->node);
-                                break;
-                            }
-                        }
-                        if (!cur) {
-                            if (n_pkt->frag != CDNET_FRAG_FIRST) {
-                                d_error("first fragment is not CDNET_FRAG_FIRST\n");
+            cdnet_packet_t *n_pkt = cdnet_packet_get(&net_proxy_intf.rx_head);
+            if (n_pkt) {
+                list_node_t *pre, *cur;
+                cdnet_packet_t *conv_pkt = NULL;
+
+                if (n_pkt->level == CDNET_L2 && n_pkt->frag) {
+                    list_for_each(&frag_pend_head, pre, cur) {
+                        cdnet_packet_t *t_pkt = list_entry(cur, cdnet_packet_t);
+                        if (t_pkt->src_mac == n_pkt->src_mac) {
+                            t_pkt->_seq_num = (t_pkt->_seq_num + 1) & 0x7f;
+                            if (t_pkt->_seq_num != n_pkt->_seq_num ||
+                                    n_pkt->frag == CDNET_FRAG_FIRST) {
+                                d_error("wrong frag seq: %d %d, frag: %d\n",
+                                        t_pkt->_seq_num, n_pkt->_seq_num, n_pkt->frag);
                                 exit(-1);
                             }
-                            list_put(&frag_pend_head, &n_pkt->node);
+                            memcpy(t_pkt->dat + t_pkt->len, n_pkt->dat, n_pkt->len);
+                            t_pkt->len += n_pkt->len;
+                            if (n_pkt->frag == CDNET_FRAG_LAST) {
+                                list_pick(&frag_pend_head, pre, cur);
+                                conv_pkt = t_pkt;
+                            }
+                            list_put(net_proxy_intf.free_head, &n_pkt->node);
+                            break;
                         }
-                    } else { // convert single t_pkt
-                        conv_pkt = n_pkt;
                     }
+                    if (!cur) {
+                        if (n_pkt->frag != CDNET_FRAG_FIRST) {
+                            d_error("first fragment is not CDNET_FRAG_FIRST\n");
+                            exit(-1);
+                        }
+                        list_put(&frag_pend_head, &n_pkt->node);
+                    }
+                } else { // convert single t_pkt
+                    conv_pkt = n_pkt;
+                }
 
-                    if (conv_pkt) {
-                        int ip_len;
-                        ret = cdnet2ip(&net_proxy_intf, conv_pkt, ip_dat, &ip_len);
-                        if (ret == 0) {
-                            hex_dump("write to tun", ip_dat, ip_len);
-                            nwrite = cwrite(tun_fd, ip_dat, ip_len);
-                            d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
-                        } else {
-                            d_debug(">>>: cdnet2ip drop\n");
-                        }
-                        list_put(net_proxy_intf.free_head, &conv_pkt->node);
+                if (conv_pkt) {
+                    int ip_len;
+                    ret = cdnet2ip(&net_proxy_intf, conv_pkt, tmp_buf, &ip_len);
+                    if (ret == 0) {
+                        hex_dump("write to tun", tmp_buf, ip_len);
+                        int nwrite = cwrite(tun_fd, tmp_buf, ip_len);
+                        d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
+                    } else {
+                        d_debug(">>>: cdnet2ip drop\n");
                     }
+                    list_put(net_proxy_intf.free_head, &conv_pkt->node);
                 }
             }
         }
