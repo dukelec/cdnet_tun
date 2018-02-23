@@ -82,6 +82,9 @@ static struct option longopts[] = {
 
 static void uart_flush(void)
 {
+    cdnet_tx(&net_setting_intf);
+    cdnet_tx(&net_proxy_intf);
+
     while (cdshare_intf.tx_head.first != NULL) {
         cd_frame_t *frame = list_get_entry(&cdshare_intf.tx_head, cd_frame_t);
         cduart_fill_crc(frame->dat);
@@ -188,12 +191,13 @@ int main(int argc, char *argv[]) {
     while (true) {
         int ret;
         fd_set rd_set;
+        struct timeval tv = { .tv_sec = 0, .tv_usec = 1 }; //ms
 
         FD_ZERO(&rd_set);
         FD_SET(tun_fd, &rd_set);
         FD_SET(uart_fd, &rd_set);
 
-        ret = select(max(tun_fd, uart_fd) + 1, &rd_set, NULL, NULL, NULL);
+        ret = select(max(tun_fd, uart_fd) + 1, &rd_set, NULL, NULL, &tv);
         if (ret < 0) {
             if (errno == EINTR) {
                 continue;
@@ -257,8 +261,6 @@ int main(int argc, char *argv[]) {
                     list_put(net_proxy_intf.free_head, &pkt->node);
                 }
 
-                cdnet_tx(&net_setting_intf);
-                cdnet_tx(&net_proxy_intf);
                 uart_flush();
             }
         }
@@ -270,11 +272,12 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
             if (uart_len != 0) {
-                d_verbose("uart get len: %d\n", uart_len);
+                //d_verbose("uart get len: %d\n", uart_len);
                 cduart_rx_handle(&cdshare_intf, tmp_buf, uart_len);
             }
             cdnet_rx(&net_setting_intf);
             cdnet_rx(&net_proxy_intf);
+            uart_flush();
 
             cdnet_packet_t *s_pkt = cdnet_packet_get(&net_setting_intf.rx_head);
             if (s_pkt) {
@@ -333,6 +336,8 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+
+        uart_flush();
     }
 
     return 0;

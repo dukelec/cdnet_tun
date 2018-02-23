@@ -13,9 +13,9 @@
 #define DEBUG
 #define VERBOSE
 
-#define CDUART_IDLE_TIME    (500000 / SYSTICK_US_DIV) // 500 ms
+#define CDUART_IDLE_TIME    (500000 / SYSTICK_US_DIV)
 
 #define CDNET_DAT_SIZE      2000 // MTU size + compress overhead
-#define SEQ_TIMEOUT         (500000 / SYSTICK_US_DIV) // 500 ms
+#define SEQ_TIMEOUT         (500000 / SYSTICK_US_DIV)
 
 #endif

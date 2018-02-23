@@ -17,7 +17,7 @@
 static cd_frame_t cd_frame_alloc[CD_FRAME_MAX];
 static list_head_t cd_free_head = {0};
 
-#define NET_PACKET_MAX 100
+#define NET_PACKET_MAX 1000
 static cdnet_packet_t net_packet_alloc[NET_PACKET_MAX];
 static list_head_t net_free_head = {0};
 
@@ -50,7 +50,7 @@ static cd_frame_t *dummy_get_rx_frame(cd_intf_t *intf)
             break;
 
         if (frame->dat[0] == 0x55) {
-            d_debug("dummy: 55 rx done\n");
+            //d_debug("dummy: 55 rx done\n");
             list_put(&cd_setting_head, &frame->node);
         } else if (frame->dat[0] == 0x56) {
             uint8_t i;
@@ -58,7 +58,7 @@ static cd_frame_t *dummy_get_rx_frame(cd_intf_t *intf)
             memcpy(frame->dat, frame->dat + 3, 2);
             for (i = 0; i < frame->dat[2]; i++)
                 frame->dat[i + 3] = frame->dat[i + 5];
-            d_debug("dummy: 56 rx done\n");
+            //d_debug("dummy: 56 rx done\n");
             list_put(&cd_proxy_head, &frame->node);
         } else {
             d_debug("dummy: skip rx from !0x55 && !0x56\n");
