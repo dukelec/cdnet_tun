@@ -210,7 +210,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (FD_ISSET(tun_fd, &rd_set) && net_proxy_intf.free_head->len > 10) {
+        if (FD_ISSET(tun_fd, &rd_set) && net_proxy_intf.free_head->len > 50) {
             int nread = cread(tun_fd, tmp_buf, BUFSIZE);
             if (nread != 0) {
                 cdnet_packet_t *pkt = cdnet_packet_get(net_proxy_intf.free_head);
@@ -267,7 +267,7 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (FD_ISSET(uart_fd, &rd_set)) {
+        if (FD_ISSET(uart_fd, &rd_set) || net_proxy_intf.rx_head.len || cdshare_intf.rx_head.len) {
             int uart_len = read(uart_fd, tmp_buf, BUFSIZE);
             if (uart_len < 0) {
                 d_error("read uart");

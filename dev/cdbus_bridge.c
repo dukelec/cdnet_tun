@@ -17,7 +17,7 @@
 static cd_frame_t cd_frame_alloc[CD_FRAME_MAX];
 static list_head_t cd_free_head = {0};
 
-#define NET_PACKET_MAX 1000
+#define NET_PACKET_MAX 200
 static cdnet_packet_t net_packet_alloc[NET_PACKET_MAX];
 static list_head_t net_free_head = {0};
 
@@ -30,6 +30,8 @@ static cd_intf_t cd_proxy_intf = {0};
 
 cdnet_intf_t net_proxy_intf = {0};
 cdnet_intf_t net_setting_intf = {0};
+
+static cd_frame_t *conv_frame = NULL;
 
 
 static cd_frame_t *dummy_get_free_frame(cd_intf_t *_)
@@ -53,13 +55,13 @@ static cd_frame_t *dummy_get_rx_frame(cd_intf_t *intf)
             //d_debug("dummy: 55 rx done\n");
             list_put(&cd_setting_head, &frame->node);
         } else if (frame->dat[0] == 0x56) {
-            uint8_t i;
-            frame->dat[2] -= 2;
-            memcpy(frame->dat, frame->dat + 3, 2);
-            for (i = 0; i < frame->dat[2]; i++)
-                frame->dat[i + 3] = frame->dat[i + 5];
+            memcpy(conv_frame->dat, frame->dat + 3, 2);
+            conv_frame->dat[2] = frame->dat[2] - 2;
+            memcpy(conv_frame->dat + 3, frame->dat + 5, conv_frame->dat[2]);
+
+            list_put(&cd_proxy_head, &conv_frame->node);
+            conv_frame = frame;
             //d_debug("dummy: 56 rx done\n");
-            list_put(&cd_proxy_head, &frame->node);
         } else {
             d_debug("dummy: skip rx from !0x55 && !0x56\n");
             dummy_put_free_frame(NULL, frame);
@@ -79,14 +81,13 @@ static void dummy_put_tx_frame(cd_intf_t *intf, cd_frame_t *frame)
         cdshare_intf.cd_intf.put_tx_frame(&cdshare_intf.cd_intf, frame);
 
     } else if (intf == &cd_proxy_intf) {
-        int i, l = frame->dat[2] + 2;
-        for (i = l; i >= 3; i--)
-            frame->dat[i + 2] = frame->dat[i];
-        memcpy(frame->dat + 3, frame->dat, 2);
-        frame->dat[0] = 0xaa;
-        frame->dat[1] = 0x56;
-        frame->dat[2] = l;
-        cdshare_intf.cd_intf.put_tx_frame(&cdshare_intf.cd_intf, frame);
+        conv_frame->dat[0] = 0xaa;
+        conv_frame->dat[1] = 0x56;
+        conv_frame->dat[2] = frame->dat[2] + 2;
+        memcpy(conv_frame->dat + 3, frame->dat, 2);
+        memcpy(conv_frame->dat + 5, frame->dat + 3, conv_frame->dat[2]);
+        cdshare_intf.cd_intf.put_tx_frame(&cdshare_intf.cd_intf, conv_frame);
+        conv_frame = frame;
     }
 }
 
@@ -118,6 +119,8 @@ void cdbus_bridge_init(cdnet_addr_t *addr)
         list_put(&cd_free_head, &cd_frame_alloc[i].node);
     for (i = 0; i < NET_PACKET_MAX; i++)
         list_put(&net_free_head, &net_packet_alloc[i].node);
+
+    conv_frame = list_get_entry(&cd_free_head, cd_frame_t);
 
     cduart_intf_init(&cdshare_intf, &cd_free_head);
 
