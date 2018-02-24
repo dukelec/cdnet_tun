@@ -46,8 +46,6 @@ int ip2cdnet(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
         const uint8_t *ip_dat, int ip_len);
 int cdnet2ip(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
         uint8_t *ip_dat, int *ip_len);
-
-void hex_dump(char *desc, void *addr, int len);
 int uart_init(int fd, int speed);
 
 
@@ -88,6 +86,11 @@ static void uart_flush(void)
     while (cdshare_intf.tx_head.first != NULL) {
         cd_frame_t *frame = list_get_entry(&cdshare_intf.tx_head, cd_frame_t);
         cduart_fill_crc(frame->dat);
+#ifdef VERBOSE
+        char pbuf[52];
+        hex_dump_small(pbuf, frame->dat, frame->dat[2] + 3, 16);
+        d_verbose("<- uart tx [%s]\n", pbuf);
+#endif
         int ret = write(uart_fd, frame->dat, frame->dat[2] + 5);
         if (ret != frame->dat[2] + 5) {
             d_error("err: write uart len: %d, ret: %d\n", frame->dat[2] + 5, ret);
@@ -207,12 +210,9 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (FD_ISSET(tun_fd, &rd_set)) {
+        if (FD_ISSET(tun_fd, &rd_set) && net_proxy_intf.free_head->len > 10) {
             int nread = cread(tun_fd, tmp_buf, BUFSIZE);
             if (nread != 0) {
-                printf("nread: %d\n", nread);
-                hex_dump(NULL, tmp_buf, nread);
-
                 cdnet_packet_t *pkt = cdnet_packet_get(net_proxy_intf.free_head);
                 if (!pkt) {
                     d_error("no free pkt for tx\n");
@@ -222,6 +222,7 @@ int main(int argc, char *argv[]) {
                 ret = ip2cdnet(&net_proxy_intf, pkt, tmp_buf, nread);
                 if (ret == 0) {
                     d_debug("<<<: write to proxy, tun len: %d\n", nread);
+                    //hex_dump(tmp_buf, nread);
                     if (pkt->level == CDNET_L2 && pkt->len > 251) {
                         if (!pkt->seq) {
                             d_error("can't tx fragment without seq\n");
@@ -254,6 +255,7 @@ int main(int argc, char *argv[]) {
                         }
 
                     } else {
+                        pkt->frag = CDNET_FRAG_NONE;
                         list_put(&net_proxy_intf.tx_head, &pkt->node);
                     }
                 } else {
@@ -326,9 +328,9 @@ int main(int argc, char *argv[]) {
                     int ip_len;
                     ret = cdnet2ip(&net_proxy_intf, conv_pkt, tmp_buf, &ip_len);
                     if (ret == 0) {
-                        hex_dump("write to tun", tmp_buf, ip_len);
                         int nwrite = cwrite(tun_fd, tmp_buf, ip_len);
                         d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
+                        //hex_dump(tmp_buf, ip_len);
                     } else {
                         d_debug(">>>: cdnet2ip drop\n");
                     }

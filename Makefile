@@ -31,11 +31,11 @@ cdnet/dev/cdbus_uart.c \
 cdnet/arch/pc/arch_wrapper.c \
 cdnet/utils/list.c \
 cdnet/utils/modbus_crc.c \
+cdnet/utils/hex_dump.c \
 dev/cdbus_bridge.c \
 ip/ip_cdnet_conversion.c \
 ip/ip_checksum.c \
-tun/tun.c \
-utils/hex_dump.c
+tun/tun.c
 
 
 GIT_VERSION := $(shell git describe --dirty --always --tags)
