@@ -71,7 +71,7 @@ static cd_frame_t *dummy_get_rx_frame(cd_intf_t *intf)
     if (intf == &cd_setting_intf)
         return list_get_entry(&cd_setting_head, cd_frame_t);
     if (intf == &cd_proxy_intf)
-    return list_get_entry(&cd_proxy_head, cd_frame_t);
+        return list_get_entry(&cd_proxy_head, cd_frame_t);
     return NULL;
 }
 
