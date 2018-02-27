@@ -190,6 +190,7 @@ int main(int argc, char *argv[]) {
 
     cdbus_bridge_init(&local_addr);
     uart_flush();
+    sleep(1);
 
     while (true) {
         int ret;
