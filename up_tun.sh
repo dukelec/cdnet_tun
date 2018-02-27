@@ -11,6 +11,8 @@ else
 fi
 
 unique_self="fd00::ff:fe00:$id"
+unique_self_cd="fd00::cd00:0:ff:fe00:$id"
+unique_self_cf="fd00::cf00:0:ff:fe00:$id"
 self4="192.168.44.$id"
 
 if [ "$id" == "1" ]; then
@@ -31,6 +33,8 @@ IFS=' ' read -r -a array <<< "$rm_ip"
 rm_ip="${array[2]}"
 [ "$rm_ip" != "" ] && ip addr del "$rm_ip" dev tun0
 ip addr add "$unique_self/64" dev tun0
+ip addr add "$unique_self_cd/64" dev tun0
+ip addr add "$unique_self_cf/64" dev tun0
 ip addr add "$self4/24" dev tun0
 
 if [ "$id" != "1" ]; then
