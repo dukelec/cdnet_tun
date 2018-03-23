@@ -28,11 +28,13 @@ cdnet/net/cdnet_l0.c \
 cdnet/net/cdnet_l1.c \
 cdnet/net/cdnet_l2.c \
 cdnet/dev/cdbus_uart.c \
+cdnet/dev/cdctl_bx.c \
 cdnet/arch/pc/arch_wrapper.c \
 cdnet/utils/list.c \
 cdnet/utils/modbus_crc.c \
 cdnet/utils/hex_dump.c \
-dev/cdbus_bridge.c \
+dev_wrapper/cdbus_bridge_wrapper.c \
+dev_wrapper/cdctl_bx_wrapper.c \
 ip/ip_cdnet_conversion.c \
 ip/ip_checksum.c \
 tun/tun.c

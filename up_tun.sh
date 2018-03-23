@@ -4,24 +4,42 @@ if [ $UID -ne 0 ]; then echo "restart as root"; sudo "$0" "$@"; exit; fi
 cd "$(dirname "$0")"
 trap 'kill $(jobs -p)' EXIT
 
-if [ "$1" != "" ]; then
-  id="$1"
-else
-  id="1"
+
+# options may be followed by one colon to indicate they have a required argument
+if ! options=$(getopt -o '' -l id:,dev-type:,intn-pin: -- "$@")
+then
+  exit 1
 fi
 
+eval set -- "$options"
+
+while [ $# -gt 0 ]
+do
+  case $1 in
+  --id) id="$2"; shift ;;
+  --dev-type) dev_type="$2"; shift ;;
+  --intn-pin) intn_pin="$2"; shift ;;
+  (--) shift; break;;
+  (*) echo "Incorrect parameter: $1"; exit 1;;
+  esac
+  shift
+done
+
+[ "$id" == "" ] && id="1"
 unique_self="fd00::ff:fe00:$id"
 unique_self_cd="fd00::cd00:0:ff:fe00:$id"
 unique_self_cf="fd00::cf00:0:ff:fe00:$id"
 self4="192.168.44.$id"
+router4="192.168.44.1" # for id != 1 only
 
-if [ "$id" == "1" ]; then
-  ./cdnet_tun --mac="$id" --unique_self="$unique_self" --self4="$self4" &
-else
-  router4="192.168.44.1"
-  ./cdnet_tun --mac="$id" --unique_self="$unique_self" --self4="$self4" --router4="$router4" &
-fi
+params="--mac=$id --unique-self=$unique_self --self4=$self4"
 
+[ "$dev_type" != "" ] && params="$params --dev-type=$dev_type"
+[ "$intn_pin" != "" ] && params="$params --intn-pin=$intn_pin"
+[ "$id" != "1" ] && params="$params --router4=$router4"
+
+echo "invoke: ./cdnet_tun $params"
+./cdnet_tun $params &
 
 
 sleep 0.1

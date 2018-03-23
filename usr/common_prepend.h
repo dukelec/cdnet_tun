@@ -19,4 +19,22 @@
 #define CDNET_DAT_SIZE      2000 // MTU size + compress overhead
 #define SEQ_TIMEOUT         (500000 / SYSTICK_US_DIV)
 
+
+typedef struct {
+    int fd;
+} gpio_t;
+
+#define gpio_set_value(...)
+
+static inline void debug_flush(void)
+{
+}
+
+typedef struct {
+    int fd;
+} spi_t;
+
+void spi_mem_write(spi_t *spi, uint8_t mem_addr, const uint8_t *buf, int len);
+void spi_mem_read(spi_t *spi, uint8_t mem_addr, uint8_t *buf, int len);
+
 #endif

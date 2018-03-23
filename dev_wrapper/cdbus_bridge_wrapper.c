@@ -9,19 +9,21 @@
 
 #include <unistd.h>
 #include <time.h>
+#include <termios.h>
+#include <fcntl.h>
 
-#include "common.h"
 #include "cdbus_uart.h"
+#include "main.h"
 
-#define CD_FRAME_MAX 100
-static cd_frame_t cd_frame_alloc[CD_FRAME_MAX];
+int uart_init(int fd, int speed);
+
+
+static int uart_fd = -1;
+
 static list_head_t cd_free_head = {0};
-
-#define NET_PACKET_MAX 200
-static cdnet_packet_t net_packet_alloc[NET_PACKET_MAX];
 static list_head_t net_free_head = {0};
 
-cduart_intf_t cdshare_intf = {0};
+static cduart_intf_t cdshare_intf = {0};
 
 static list_head_t cd_setting_head = {0};
 static cd_intf_t cd_setting_intf = {0};
@@ -29,7 +31,7 @@ static list_head_t cd_proxy_head = {0};
 static cd_intf_t cd_proxy_intf = {0};
 
 cdnet_intf_t net_proxy_intf = {0};
-cdnet_intf_t net_setting_intf = {0};
+static cdnet_intf_t net_setting_intf = {0};
 
 static cd_frame_t *conv_frame = NULL;
 
@@ -112,9 +114,22 @@ static void dummy_set_filter(cd_intf_t *intf, uint8_t filter)
     }
 }
 
-void cdbus_bridge_init(cdnet_addr_t *addr)
+int cdbus_bridge_wrapper_init(cdnet_addr_t *addr, const char *dev)
 {
     int i;
+    const char *def_dev = "/dev/ttyACM0";
+    if (dev && *dev)
+        def_dev = dev;
+    uart_fd = open(def_dev, O_RDWR | O_NOCTTY);
+    if(uart_fd < 0) {
+        d_error("open %s failed\n", def_dev);
+        exit(-1);
+    }
+    if (uart_init(uart_fd, 115200)) {
+        d_error("init uart: %s faild!\n", def_dev);
+        exit(-1);
+    }
+
     for (i = 0; i < CD_FRAME_MAX; i++)
         list_put(&cd_free_head, &cd_frame_alloc[i].node);
     for (i = 0; i < NET_PACKET_MAX; i++)
@@ -149,4 +164,60 @@ void cdbus_bridge_init(cdnet_addr_t *addr)
     cdnet_intf_init(&net_proxy_intf, &net_free_head, &cd_proxy_intf, addr);
 
     net_proxy_intf.cd_intf->set_filter(net_proxy_intf.cd_intf, addr->mac);
+
+    return uart_fd;
+}
+
+
+static void cdbus_bridge_tx(void)
+{
+    cdnet_tx(&net_setting_intf);
+    cdnet_tx(&net_proxy_intf);
+
+    while (cdshare_intf.tx_head.first != NULL) {
+        cd_frame_t *frame = list_get_entry(&cdshare_intf.tx_head, cd_frame_t);
+        cduart_fill_crc(frame->dat);
+#ifdef VERBOSE
+        char pbuf[52];
+        hex_dump_small(pbuf, frame->dat, frame->dat[2] + 3, 16);
+        d_verbose("<- uart tx [%s]\n", pbuf);
+#endif
+        int ret = write(uart_fd, frame->dat, frame->dat[2] + 5);
+        if (ret != frame->dat[2] + 5) {
+            d_error("err: write uart len: %d, ret: %d\n", frame->dat[2] + 5, ret);
+            exit(1);
+        }
+        list_put(cdshare_intf.free_head, &frame->node);
+    }
+}
+
+static void cdbus_bridge_rx(void)
+{
+#define BUFSIZE 2000
+    uint8_t tmp_buf[BUFSIZE];
+
+    int uart_len = read(uart_fd, tmp_buf, BUFSIZE);
+    if (uart_len < 0) {
+        d_error("read uart");
+        exit(1);
+    }
+    if (uart_len != 0) {
+        //d_verbose("uart get len: %d\n", uart_len);
+        cduart_rx_handle(&cdshare_intf, tmp_buf, uart_len);
+    }
+    cdnet_rx(&net_setting_intf);
+    cdnet_rx(&net_proxy_intf);
+    //cdbus_bridge_tx();
+
+    cdnet_packet_t *s_pkt = cdnet_packet_get(&net_setting_intf.rx_head);
+    if (s_pkt) {
+        d_debug("setting_intf: get rx, free\n");
+        list_put(net_setting_intf.free_head, &s_pkt->node);
+    }
+}
+
+void cdbus_bridge_wrapper_task(void)
+{
+    cdbus_bridge_rx();
+    cdbus_bridge_tx();
 }
