@@ -11,6 +11,7 @@ if [ ! -d /sys/class/gpio/gpio$intn_pin ]; then
   echo "init intn_pin: $intn_pin"
   echo $intn_pin > /sys/class/gpio/export
   echo in > /sys/class/gpio/gpio$intn_pin/direction
+  echo falling > /sys/class/gpio/gpio$intn_pin/edge
 fi
 
 if [ ! -d /sys/class/gpio/gpio$rstn_pin ]; then

@@ -196,13 +196,18 @@ int main(int argc, char *argv[]) {
     while (true) {
         int ret;
         fd_set rd_set;
+        fd_set exceptfds;
         FD_ZERO(&rd_set);
+        FD_ZERO(&exceptfds);
 
         if (!cdn_intf->rx_head.len) {
-            struct timeval tv = { .tv_sec = 0, .tv_usec = 1 }; //ms
+            struct timeval tv = { .tv_sec = 0, .tv_usec = 1000 }; //us
             FD_SET(tun_fd, &rd_set);
-            FD_SET(cdn_fd, &rd_set);
-            ret = select(max(tun_fd, cdn_fd) + 1, &rd_set, NULL, NULL, &tv);
+            if (dev_type == DEV_BRIDGE)
+                FD_SET(cdn_fd, &rd_set);
+            else if (dev_type == DEV_SPI)
+                FD_SET(cdn_fd, &exceptfds);
+            ret = select(max(tun_fd, cdn_fd) + 1, &rd_set, NULL, &exceptfds, &tv);
             if (ret < 0) {
                 if (errno == EINTR) {
                     continue;
@@ -211,9 +216,11 @@ int main(int argc, char *argv[]) {
                     exit(1);
                 }
             }
+        } else {
+            d_debug("skip select...\n");
         }
 
-        if (FD_ISSET(cdn_fd, &rd_set) || cdn_intf->rx_head.len) {
+        if (FD_ISSET(cdn_fd, &rd_set) || FD_ISSET(cdn_fd, &exceptfds) || cdn_intf->rx_head.len) {
             cdn_task(); // rx
 
             while (true) {
