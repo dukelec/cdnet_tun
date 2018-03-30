@@ -10,7 +10,7 @@
 #ifndef __CDNET_CONFIG_H__
 #define __CDNET_CONFIG_H__
 
-#define DEBUG
+//#define DEBUG
 //#define VERBOSE
 
 #define CDUART_IDLE_TIME    (500000 / SYSTICK_US_DIV)
