@@ -4,14 +4,12 @@
 # Copyright (c) 2017, DUKELEC, Inc.
 # All rights reserved.
 #
-# Author: Duke Fong <duke@dukelec.com>
+# Author: Duke Fong <d@d-l.io>
 #
 
-# Copy this Makefile to the same path of 6locd library,
-# and create the main.c file
-
 INCLUDES = \
-cdnet/net \
+cdnet/parser \
+cdnet/dispatch \
 cdnet/utils \
 cdnet/dev \
 cdnet/arch/pc \
@@ -21,20 +19,16 @@ usr
 
 C_SOURCES = \
 usr/main.c \
-usr/uart_dev.c \
-cdnet/net/cdnet.c \
-cdnet/net/cdnet_seq.c \
-cdnet/net/cdnet_l0.c \
-cdnet/net/cdnet_l1.c \
-cdnet/net/cdnet_l2.c \
+usr/cd_args.c \
+cdnet/parser/cdnet_l1.c \
 cdnet/dev/cdbus_uart.c \
-cdnet/dev/cdctl_bx.c \
+cdnet/dev/cdctl.c \
 cdnet/arch/pc/arch_wrapper.c \
-cdnet/utils/list.c \
+cdnet/utils/cd_list.c \
 cdnet/utils/modbus_crc.c \
 cdnet/utils/hex_dump.c \
-dev_wrapper/cdbus_bridge_wrapper.c \
-dev_wrapper/cdctl_bx_wrapper.c \
+dev_wrapper/cdbus_tty_wrapper.c \
+dev_wrapper/cdctl_spi_wrapper.c \
 ip/ip_cdnet_conversion.c \
 ip/ip_checksum.c \
 tun/tun.c

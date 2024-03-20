@@ -6,7 +6,7 @@
  *
  * Authors:
  *   Davide Brini
- *   Duke Fong <duke@dukelec.com>
+ *   Duke Fong <d@d-l.io>
  */
 
 #ifndef __TUN_H__

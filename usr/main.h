@@ -4,40 +4,56 @@
  * Copyright (c) 2017, DUKELEC, Inc.
  * All rights reserved.
  *
- * Author: Duke Fong <duke@dukelec.com>
+ * Author: Duke Fong <d@d-l.io>
  */
 
 #ifndef __MAIN_H__
 #define __MAIN_H__
 
-#define CD_FRAME_MAX    100
-#define NET_PACKET_MAX  200
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <net/if.h>
+#include <linux/if_tun.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <getopt.h>
 
-extern cd_frame_t cd_frame_alloc[];
-extern cdnet_packet_t net_packet_alloc[];
+#include "tun.h"
+#include "ip.h"
+#include "cdnet.h"
+#include "cdbus_uart.h"
+#include "cd_args.h"
+#include "cd_debug.h"
 
-extern cdnet_intf_t net_proxy_intf;
-int cdbus_bridge_wrapper_init(cdnet_addr_t *addr, const char *dev);
-void cdbus_bridge_wrapper_task(void);
+#define FRAME_MAX   200
 
-extern cdnet_intf_t net_cdctl_bx_intf;
-int cdctl_bx_wrapper_init(cdnet_addr_t *addr, const char *dev, int intn);
-void cdctl_bx_wrapper_task(void);
+int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int intn);
+void cdctl_spi_wrapper_task(void);
 
+int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head);
+void cdbus_tty_wrapper_task(void);
 
-int ip2cdnet(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
-        const uint8_t *ip_dat, int ip_len);
-int cdnet2ip(cdnet_intf_t *n_intf, cdnet_packet_t *n_pkt,
-        uint8_t *ip_dat, int *ip_len);
+int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len);
+int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len);
 
-
-extern struct in_addr *ipv4_self;
-extern struct in_addr *default_router4;
-extern bool has_router4;
-
-extern struct in6_addr *unique_self;
-extern struct in6_addr *global_self;
+extern struct in6_addr *ipv6_self;
 extern struct in6_addr *default_router6;
 extern bool has_router6;
+
+extern cd_dev_t *cd_dev;
+extern list_head_t *cd_rx_head;
 
 #endif

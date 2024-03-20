@@ -4,7 +4,7 @@
  * Copyright (c) 2017, DUKELEC, Inc.
  * All rights reserved.
  *
- * Author: Duke Fong <duke@dukelec.com>
+ * Author: Duke Fong <d@d-l.io>
  */
 
 #include <stdio.h>
@@ -12,39 +12,35 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
-
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
 #include <linux/types.h>
 #include <linux/spi/spidev.h>
 
-#include "common.h"
-#include "cdctl_bx.h"
-#include "cdctl_bx_regs.h"
+#include "cdctl.h"
 #include "main.h"
-
-#define CDCTL_MASK (BIT_FLAG_RX_PENDING |           \
-            BIT_FLAG_RX_LOST | BIT_FLAG_RX_ERROR |  \
-            BIT_FLAG_TX_CD | BIT_FLAG_TX_ERROR)
 
 #define SYSFS_GPIO_DIR  "/sys/class/gpio"
 #define GPIO_BUF_SIZE   64
 
-#define BAUD_L          1000000
-#define BAUD_H          10000000
-
 static uint32_t spi_speed = 20000000; // HZ
-
-static list_head_t cd_free_head = {0};
-static list_head_t net_free_head = {0};
-
+const char *def_dev = "/dev/spidev0.0";
 static spi_t spi_dev = {0};
 static gpio_t intn_pin = {0};
 
-static cdctl_intf_t r_intf = {0};
-cdnet_intf_t net_cdctl_bx_intf = {0};
+static cdctl_dev_t cdctl_dev = {0};
+
+static cdctl_cfg_t bus_cfg = {
+        .mac = 0x00,
+        .baud_l = 1000000,
+        .baud_h = 10000000,
+        .filter_m = { 0xff, 0xff },
+        .mode = 0,
+        .tx_permit_len = 0x14,
+        .max_idle_len = 0xc8,
+        .tx_pre_len = 0x01
+};
 
 
 static bool gpio_get_value(gpio_t *gpio)
@@ -124,52 +120,38 @@ static void spi_dumpstat(spi_t *spi)
         return;
     }
 
-    printf("spi mode 0x%x, %d bits %sper word, %d Hz max\n",
-        mode, bits, lsb ? "(lsb first) " : "", speed);
-}
-
-static inline void cdctl_write_reg(cdctl_intf_t *intf, uint8_t reg, uint8_t val)
-{
-    spi_mem_write(intf->spi, reg | 0x80, &val, 1);
+    printf("spi mode 0x%x, %d bits %sper word, %d Hz max\n", mode, bits, lsb ? "(lsb first) " : "", speed);
 }
 
 
-int cdctl_bx_wrapper_init(cdnet_addr_t *addr, const char *dev, int intn)
+void cdctl_spi_wrapper_task(void)
 {
-    int i;
-    const char *def_dev = "/dev/spidev0.0";
-    if (dev && *dev)
-        def_dev = dev;
+    while (true) {
+        cdctl_routine(&cdctl_dev);
+        if (gpio_get_value(&intn_pin) && !cdctl_dev.tx_head.len && !cdctl_dev.is_pending)
+            break;
+    }
+}
+
+int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int intn)
+{
+    if (dev_name && *dev_name)
+        def_dev = dev_name;
+
     spi_dev.fd = open(def_dev, O_RDWR | O_NOCTTY);
     if(spi_dev.fd < 0) {
         d_error("open %s failed\n", def_dev);
         exit(-1);
     }
     if (ioctl(spi_dev.fd, SPI_IOC_WR_MAX_SPEED_HZ, &spi_speed) == -1) {
-        d_error("can't set spi speed hz");
+        d_error("can't set spi speed hz\n");
         exit(-1);
     }
     spi_dumpstat(&spi_dev);
     intn_pin.fd = gpio_fd_open(intn);
 
-    for (i = 0; i < CD_FRAME_MAX; i++)
-        list_put(&cd_free_head, &cd_frame_alloc[i].node);
-    for (i = 0; i < NET_PACKET_MAX; i++)
-        list_put(&net_free_head, &net_packet_alloc[i].node);
-
-    cdctl_intf_init(&r_intf, &cd_free_head, addr->mac, BAUD_L, BAUD_H, &spi_dev, NULL);
-    cdnet_intf_init(&net_cdctl_bx_intf, &net_free_head, &r_intf.cd_intf, addr);
-    cdctl_write_reg(&r_intf, REG_INT_MASK, CDCTL_MASK);
+    cdctl_dev_init(&cdctl_dev, free_head, &bus_cfg, &spi_dev, NULL);
+    cd_dev = &cdctl_dev.cd_dev;
+    cd_rx_head = &cdctl_dev.rx_head;
     return intn_pin.fd;
-}
-
-void cdctl_bx_wrapper_task(void)
-{
-    cdnet_tx(&net_cdctl_bx_intf);
-    while (true) {
-        cdctl_task(&r_intf);
-        if (gpio_get_value(&intn_pin) && !r_intf.tx_head.len && !r_intf.is_pending)
-            break;
-    }
-    cdnet_rx(&net_cdctl_bx_intf);
 }
