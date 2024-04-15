@@ -46,7 +46,7 @@ vpath %.c $(sort $(dir $(C_SOURCES)))
 
 I_INCLUDES = $(foreach includedir,$(INCLUDES),-I$(includedir))
 CFLAGS = $(I_INCLUDES) -DSW_VER=\"$(GIT_VERSION)\"
-LDFLAGS =
+LDFLAGS = -lgpiod
 
 DEPS = $(foreach includedir,$(INCLUDES),$(wildcard $(includedir)/*.h))
 

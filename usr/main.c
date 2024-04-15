@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
         d_debug("set intn_pin: %d\n", intn_pin);
     }
 
-    /* initialize tun interface */
+    // initialize tun interface
     if (tun_str)
         strncpy(tun_name, tun_str, sizeof(tun_name));
     if ((tun_fd = tun_alloc(tun_name, IFF_TUN | IFF_NO_PI)) < 0) {
@@ -104,18 +104,13 @@ int main(int argc, char *argv[])
     while (true) {
         int ret;
         fd_set rd_set;
-        fd_set exceptfds;
         FD_ZERO(&rd_set);
-        FD_ZERO(&exceptfds);
 
         if (cd_rx_head->len == 0) {
             struct timeval tv = { .tv_sec = 0, .tv_usec = 1000 }; //us
             FD_SET(tun_fd, &rd_set);
-            if (dev_type == DEV_TTY)
-                FD_SET(dev_fd, &rd_set);
-            else if (dev_type == DEV_SPI)
-                FD_SET(dev_fd, &exceptfds);
-            ret = select(max(tun_fd, dev_fd) + 1, &rd_set, NULL, &exceptfds, &tv);
+            FD_SET(dev_fd, &rd_set);
+            ret = select(max(tun_fd, dev_fd) + 1, &rd_set, NULL, NULL, &tv);
             if (ret < 0) {
                 if (errno == EINTR) {
                     continue;
@@ -128,7 +123,7 @@ int main(int argc, char *argv[])
             d_verbose("skip select...\n");
         }
 
-        if (FD_ISSET(dev_fd, &rd_set) || FD_ISSET(dev_fd, &exceptfds) || cd_rx_head->len) {
+        if (FD_ISSET(dev_fd, &rd_set) || cd_rx_head->len) {
             dev_task(); // rx
 
             while (true) {

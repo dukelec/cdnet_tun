@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
+#include <gpiod.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -21,13 +22,16 @@
 #include "cdctl.h"
 #include "main.h"
 
-#define SYSFS_GPIO_DIR  "/sys/class/gpio"
-#define GPIO_BUF_SIZE   64
+#define GPIO_CHIP_PATH  "/dev/gpiochip0"
+#define CDCTL_MASK (BIT_FLAG_RX_PENDING | BIT_FLAG_RX_LOST | BIT_FLAG_RX_ERROR | BIT_FLAG_TX_CD | BIT_FLAG_TX_ERROR)
+
+static int intn_pin = -1;
+static struct gpiod_line_request *intn_request = NULL;
+static struct gpiod_edge_event_buffer *event_buffer = NULL;
 
 static uint32_t spi_speed = 20000000; // HZ
 const char *def_dev = "/dev/spidev0.0";
 static spi_t spi_dev = {0};
-static gpio_t intn_pin = {0};
 
 static cdctl_dev_t cdctl_dev = {0};
 
@@ -43,28 +47,85 @@ static cdctl_cfg_t bus_cfg = {
 };
 
 
-static bool gpio_get_value(gpio_t *gpio)
+static bool gpio_get_intn(void)
 {
-    char ch;
-    lseek(gpio->fd, 0, SEEK_SET);
-    if (read(gpio->fd, &ch, 1) != 1) {
-        d_error("read gpio faild\n");
-        exit(-1);
-    }
-    return ch == '1';
+    enum gpiod_line_value value = gpiod_line_request_get_value(intn_request, intn_pin);
+    return value == GPIOD_LINE_VALUE_ACTIVE;
 }
 
-static int gpio_fd_open(unsigned int gpio)
+
+// Request a line as input with edge detection
+static struct gpiod_line_request *request_input_line(const char *chip_path, unsigned int offset, const char *consumer)
 {
-        int fd;
-        char buf[GPIO_BUF_SIZE];
-        snprintf(buf, sizeof(buf), SYSFS_GPIO_DIR "/gpio%d/value", gpio);
-        fd = open(buf, O_RDONLY | O_NONBLOCK);
-        if (fd < 0) {
-            d_error("gpio_fd_open faild\n");
-            exit(-1);
-        }
-        return fd;
+    struct gpiod_request_config *req_cfg = NULL;
+    struct gpiod_line_request *request = NULL;
+    struct gpiod_line_settings *settings;
+    struct gpiod_line_config *line_cfg;
+    struct gpiod_chip *chip;
+    int ret;
+
+    chip = gpiod_chip_open(chip_path);
+    if (!chip)
+        return NULL;
+
+    settings = gpiod_line_settings_new();
+    if (!settings)
+        goto close_chip;
+
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_INPUT);
+    gpiod_line_settings_set_edge_detection(settings, GPIOD_LINE_EDGE_FALLING);
+
+    line_cfg = gpiod_line_config_new();
+    if (!line_cfg)
+        goto free_settings;
+
+    ret = gpiod_line_config_add_line_settings(line_cfg, &offset, 1, settings);
+    if (ret)
+        goto free_line_config;
+
+    if (consumer) {
+        req_cfg = gpiod_request_config_new();
+        if (!req_cfg)
+            goto free_line_config;
+        gpiod_request_config_set_consumer(req_cfg, consumer);
+    }
+
+    request = gpiod_chip_request_lines(chip, req_cfg, line_cfg);
+    gpiod_request_config_free(req_cfg);
+
+free_line_config:
+    gpiod_line_config_free(line_cfg);
+free_settings:
+    gpiod_line_settings_free(settings);
+close_chip:
+    gpiod_chip_close(chip);
+    return request;
+}
+
+
+
+static int gpio_fd_open(unsigned int offset)
+{
+    intn_request = request_input_line(GPIO_CHIP_PATH, offset, "cdctl-irq");
+
+    if (!intn_request) {
+        d_error("failed to request line: %s\n", strerror(errno));
+        exit(-1);
+    }
+
+    int fd = gpiod_line_request_get_fd(intn_request);
+    if (fd < 0) {
+        d_error("gpiod_line_request_get_fd faild\n");
+        exit(-1);
+    }
+
+    event_buffer = gpiod_edge_event_buffer_new(1); // size: 1
+    if (!event_buffer) {
+        d_error("gpiod_edge_event_buffer_new faild\n");
+        exit(-1);
+    }
+
+    return fd;
 }
 
 
@@ -127,8 +188,15 @@ static void spi_dumpstat(spi_t *spi)
 void cdctl_spi_wrapper_task(void)
 {
     while (true) {
+        int ret = gpiod_line_request_wait_edge_events(intn_request, 0);
+        if (ret == 1) {
+            ret = gpiod_line_request_read_edge_events(intn_request, event_buffer, 1); // size: 1
+            if (ret == -1) {
+                d_error("error reading edge events: %s\n", strerror(errno));
+            }
+        }
         cdctl_routine(&cdctl_dev);
-        if (gpio_get_value(&intn_pin) && !cdctl_dev.tx_head.len && !cdctl_dev.is_pending)
+        if (gpio_get_intn() && !cdctl_dev.tx_head.len && !cdctl_dev.is_pending)
             break;
     }
 }
@@ -148,10 +216,28 @@ int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int int
         exit(-1);
     }
     spi_dumpstat(&spi_dev);
-    intn_pin.fd = gpio_fd_open(intn);
+    intn_pin = intn;
+    int intn_pin_fd = gpio_fd_open(intn);
 
     cdctl_dev_init(&cdctl_dev, free_head, &bus_cfg, &spi_dev, NULL);
     cd_dev = &cdctl_dev.cd_dev;
     cd_rx_head = &cdctl_dev.rx_head;
-    return intn_pin.fd;
+
+    // 12MHz / (2 + 1) * (73 + 2) / 2^1 = 150MHz
+    cdctl_write_reg(&cdctl_dev, REG_PLL_N, 0x1);
+    d_info("pll_n: %02x\n", cdctl_read_reg(&cdctl_dev, REG_PLL_N));
+    cdctl_write_reg(&cdctl_dev, REG_PLL_ML, 0x49); // 0x49: 73
+    d_info("pll_ml: %02x\n", cdctl_read_reg(&cdctl_dev, REG_PLL_ML));
+
+    d_info("pll_ctrl: %02x\n", cdctl_read_reg(&cdctl_dev, REG_PLL_CTRL));
+    cdctl_write_reg(&cdctl_dev, REG_PLL_CTRL, 0x10); // enable pll
+    d_info("clk_status: %02x\n", cdctl_read_reg(&cdctl_dev, REG_CLK_STATUS));
+    cdctl_write_reg(&cdctl_dev, REG_CLK_CTRL, 0x01); // select pll
+
+    d_info("clk_status after select pll: %02x\n", cdctl_read_reg(&cdctl_dev, REG_CLK_STATUS));
+    d_info("version after select pll: %02x\n", cdctl_read_reg(&cdctl_dev, REG_VERSION));
+    
+    cdctl_write_reg(&cdctl_dev, REG_INT_MASK, CDCTL_MASK);
+
+    return intn_pin_fd;
 }

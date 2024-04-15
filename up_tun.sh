@@ -8,20 +8,20 @@ trap 'kill $(jobs -p)' EXIT
 # options may be followed by one colon to indicate they have a required argument
 if ! options=$(getopt -o '' -l dev-type:,intn: -- "$@")
 then
-  exit 1
+    exit 1
 fi
 
 eval set -- "$options"
 
 while [ $# -gt 0 ]
 do
-  case $1 in
-  --dev-type) dev_type="$2"; shift ;;
-  --intn) intn="$2"; shift ;;
-  (--) shift; break;;
-  (*) echo "Incorrect parameter: $1"; exit 1;;
-  esac
-  shift
+    case $1 in
+    --dev-type) dev_type="$2"; shift ;;
+    --intn) intn="$2"; shift ;;
+    (--) shift; break;;
+    (*) echo "Incorrect parameter: $1"; exit 1;;
+    esac
+    shift
 done
 
 self6="fdcd::80:00" # 80:00:00
@@ -29,8 +29,11 @@ self6="fdcd::80:00" # 80:00:00
 params="--self6=$self6"
 
 [ "$dev_type" == "" ] && dev_type="tty"
-[ "$dev_type" != "" ] && params="$params --dev-type=$dev_type"
-[ "$intn" != "" ] && params="$params --intn=$intn_pin"
+params="$params --dev-type=$dev_type"
+if [ "$dev_type" == "spi" ]; then
+    [ "$intn" == "" ] && intn="25"
+    params="$params --intn=$intn"
+fi
 
 echo "invoke: ./cdnet_tun $params"
 ./cdnet_tun $params &
@@ -47,8 +50,8 @@ rm_ip="${array[2]}"
 ip addr add "$self6/64" dev tun0
 
 if [ "$router6" != "" ]; then
-  echo "add default gw: $router6"
-  route add default gw "$router6"
+    echo "add default gw: $router6"
+    route add default gw "$router6"
 fi
 
 echo "set ip6 done:"
