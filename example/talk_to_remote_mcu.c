@@ -91,16 +91,16 @@ int main(int argc, char *argv[])
 
     // send cmd query target's dev_info
 
-    remote_addr.sin6_family = AF_INET6;
-    remote_addr.sin6_port = htons(CMD_TGT_PORT);
-    inet_pton(AF_INET6, TARGET_IP, &remote_addr.sin6_addr);
-
     if (bind(socket_cmd, (struct sockaddr *)&bind_cmd_port_addr, sizeof(struct sockaddr_in6)) < 0) {
         perror("bind_cmd_port_addr");
         return -1;
     } else {
         printf("bind_cmd_port_addr ok\n");
     }
+
+    remote_addr.sin6_family = AF_INET6;
+    remote_addr.sin6_port = htons(CMD_TGT_PORT);
+    inet_pton(AF_INET6, TARGET_IP, &remote_addr.sin6_addr);
 
     msg[0] = 0x00;
     len = 1;
