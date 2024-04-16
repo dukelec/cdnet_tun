@@ -118,7 +118,9 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     ipv6->hop_limit = 255;
 
     memcpy(ipv6->src_ip.s6_addr, ipv6_self->s6_addr, 13);
-    cdn_set_addr(pkt->src.addr, ipv6->src_ip.s6_addr[13], ipv6->src_ip.s6_addr[14], ipv6->src_ip.s6_addr[15]);
+    ipv6->src_ip.s6_addr[13] = pkt->src.addr[0];
+    ipv6->src_ip.s6_addr[14] = pkt->src.addr[1];
+    ipv6->src_ip.s6_addr[15] = pkt->src.addr[2];
     memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 16);
 
     ipv6->next_header = IPPROTO_UDP;
