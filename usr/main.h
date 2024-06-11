@@ -46,6 +46,9 @@ void cdctl_spi_wrapper_task(void);
 int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head);
 void cdbus_tty_wrapper_task(void);
 
+int linux_dev_wrapper_init(const char *dev_name, list_head_t *free_head);
+void linux_dev_wrapper_task(void);
+
 int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len);
 int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len);
 

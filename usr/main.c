@@ -25,7 +25,8 @@ static void (* dev_task)(void);
 
 typedef enum {
     DEV_TTY = 0,
-    DEV_SPI
+    DEV_SPI,
+    DEV_LD  // linux cdbus device
 } dev_type_t;
 
 static dev_type_t dev_type = DEV_TTY;
@@ -70,6 +71,8 @@ int main(int argc, char *argv[])
         dev_type = DEV_SPI;
     } else if (dev_tyte_str && strcmp(dev_tyte_str, "tty") == 0) {
         dev_type = DEV_TTY;
+    } else if (dev_tyte_str && strcmp(dev_tyte_str, "ld") == 0) {
+        dev_type = DEV_LD;
     } else {
         d_error("un-support dev_type: %s\n", optarg);
         exit(-1);
@@ -97,6 +100,9 @@ int main(int argc, char *argv[])
     } else if (dev_type == DEV_SPI) {
         dev_fd = cdctl_spi_wrapper_init(dev_name, &frame_free_head, intn_pin);
         dev_task = cdctl_spi_wrapper_task;
+    } else if (dev_type == DEV_LD) {
+        dev_fd = linux_dev_wrapper_init(dev_name, &frame_free_head);
+        dev_task = linux_dev_wrapper_task;
     }
     dev_task();
     sleep(1);

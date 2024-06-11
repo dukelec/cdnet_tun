@@ -29,6 +29,7 @@ cdnet/utils/modbus_crc.c \
 cdnet/utils/hex_dump.c \
 dev_wrapper/cdbus_tty_wrapper.c \
 dev_wrapper/cdctl_spi_wrapper.c \
+dev_wrapper/linux_dev_wrapper.c \
 ip/ip_cdnet_conversion.c \
 ip/ip_checksum.c \
 tun/tun.c
@@ -54,7 +55,7 @@ $(BUILD_DIR)/%.o: %.c $(DEPS) Makefile | $(BUILD_DIR)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 $(TARGET): $(OBJECTS)
-	gcc -o $@ $^ $(LDFLAGS)
+	$(CC) -o $@ $^ $(LDFLAGS)
 
 $(BUILD_DIR):
 	mkdir $@

@@ -206,7 +206,7 @@ int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int int
     if (dev_name && *dev_name)
         def_dev = dev_name;
 
-    spi_dev.fd = open(def_dev, O_RDWR | O_NOCTTY);
+    spi_dev.fd = open(def_dev, O_RDWR);
     if(spi_dev.fd < 0) {
         d_error("open %s failed\n", def_dev);
         exit(-1);
