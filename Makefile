@@ -9,7 +9,7 @@
 
 INCLUDES = \
 cdnet/parser \
-cdnet/dispatch \
+cdnet/core \
 cdnet/utils \
 cdnet/dev \
 cdnet/arch/pc \
