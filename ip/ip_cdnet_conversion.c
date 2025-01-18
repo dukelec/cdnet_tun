@@ -55,7 +55,7 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
         return -1;
     }
     if (ipv6->dst_ip.s6_addr[13] != 0x80 && ipv6->dst_ip.s6_addr[13] != 0xa0
-            && ipv6->dst_ip.s6_addr[13] != 0xf0) {
+            && ipv6->dst_ip.s6_addr[13] != 0xf0 && ipv6->dst_ip.s6_addr[13] != 0x00) {
         d_debug("< ip: cdnet match failed, skip...\n");
         return -1;
     }
@@ -67,7 +67,13 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
     pkt->dst.addr[1] = ipv6->dst_ip.s6_addr[14];
     pkt->dst.addr[2] = ipv6->dst_ip.s6_addr[15];
 
-    if (ipv6->dst_ip.s6_addr[13] == 0xf0) {
+    if (ipv6->dst_ip.s6_addr[13] == 0x00) {
+        // l0 local link
+        pkt->src.addr[0] = 0x00;
+        pkt->dst.addr[0] = 0x00;
+        pkt->_d_mac = pkt->dst.addr[2];
+
+    } else if (ipv6->dst_ip.s6_addr[13] == 0xf0) {
         // l1 multicast
         pkt->src.addr[0] = 0xa0;
         pkt->dst.addr[0] = 0xf0;
@@ -100,8 +106,9 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
     pkt->src.port = ntohs(udp->src_port);
     pkt->dst.port = ntohs(udp->dst_port);
     pkt->len = ntohs(udp->len) - 8; // 8: udp header
+    pkt->dat = pkt->frm->dat + 3 + cdn_hdr_size_pkt(pkt);
     memcpy(pkt->dat, ip_dat + 40 + 8, pkt->len);
-    d_verbose("< ip: l1: udp port: %d -> %d, dat_len: %d\n", pkt->src.port, pkt->dst.port, pkt->len);
+    d_verbose("< ip2cdnet: udp port: %d -> %d, dat_len: %d\n", pkt->src.port, pkt->dst.port, pkt->len);
     return 0;
 }
 
@@ -122,6 +129,8 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     ipv6->src_ip.s6_addr[14] = pkt->src.addr[1];
     ipv6->src_ip.s6_addr[15] = pkt->src.addr[2];
     memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 16);
+    if (pkt->src.addr[0] == 0)
+        ipv6->dst_ip.s6_addr[13] = 0; // l0 address
 
     ipv6->next_header = IPPROTO_UDP;
     udp->src_port = htons(pkt->src.port);
@@ -136,7 +145,7 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     udp->check = tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
             ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len));
 
-    d_verbose("> ip: l1: udp port: %d -> %d, dat_len: %d, cksum: %04x\n",
+    d_verbose("> cdnet2ip: udp port: %d -> %d, dat_len: %d, cksum: %04x\n",
             pkt->src.port, pkt->dst.port, pkt->len, udp->check);
     return 0;
 }

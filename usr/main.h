@@ -33,6 +33,7 @@
 
 #include "tun.h"
 #include "ip.h"
+#include "cdbus.h"
 #include "cdnet.h"
 #include "cdbus_uart.h"
 #include "cd_args.h"

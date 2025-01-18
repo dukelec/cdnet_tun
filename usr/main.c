@@ -138,16 +138,18 @@ int main(int argc, char *argv[])
                 if (!frm)
                     break;
 
+                tmp_packet.frm = frm;
                 tmp_packet._l_net = ipv6_self->s6_addr[14];
-                ret = cdn1_from_frame(frm->dat, &tmp_packet); // addition in: _l_net
-                list_put(&frame_free_head, &frm->node);
+                ret = cdn_frame_r(&tmp_packet); // addition in: _l_net
                 if (ret) {
                     d_debug("->-: from_frame error, drop\n");
+                    list_put(&frame_free_head, &frm->node);
                     continue;
                 }
 
                 int ip_len;
                 ret = cdnet2ip(&tmp_packet, tmp_buf, &ip_len);
+                list_put(&frame_free_head, &frm->node);
                 if (ret == 0) {
                     int nwrite = cwrite(tun_fd, tmp_buf, ip_len);
                     d_debug(">>>: write to tun: %d/%d\n", nwrite, ip_len);
@@ -162,14 +164,15 @@ int main(int argc, char *argv[])
             int nread = cread(tun_fd, tmp_buf, BUFSIZE);
             if (nread != 0) {
 
+                cd_frame_t *frm = list_get_entry(&frame_free_head, cd_frame_t);
+                tmp_packet.frm = frm;
                 ret = ip2cdnet(&tmp_packet, tmp_buf, nread);
                 if (ret == 0) {
                     d_debug("<<<: write to dev, tun len: %d\n", nread);
                     //hex_dump(tmp_buf, nread);
 
                     // cdnet -> cdbus
-                    cd_frame_t *frm = list_get_entry(&frame_free_head, cd_frame_t);
-                    ret = cdn1_to_frame(&tmp_packet, frm->dat); // addition in: _s_mac, _d_mac
+                    ret = cdn_frame_w(&tmp_packet); // addition in: _s_mac, _d_mac
 
                     if (ret == 0) {
                         cd_dev->put_tx_frame(cd_dev, frm);
@@ -178,6 +181,7 @@ int main(int argc, char *argv[])
                         d_debug("-<-: to_frame error, drop\n");
                     }
                 } else {
+                    list_put(&frame_free_head, &frm->node);
                     d_debug("-<-: ip2cdnet drop\n");
                 }
             }

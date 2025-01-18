@@ -25,6 +25,7 @@ do
 done
 
 self6="fdcd::80:00" # 80:00:00
+self6_l0="fdcd::00" # 00:00:00
 
 params="--self6=$self6"
 
@@ -48,6 +49,7 @@ IFS=' ' read -r -a array <<< "$rm_ip"
 rm_ip="${array[2]}"
 [ "$rm_ip" != "" ] && ip addr del "$rm_ip" dev tun0
 ip addr add "$self6/64" dev tun0
+ip addr add "$self6_l0/64" dev tun0
 
 if [ "$router6" != "" ]; then
     echo "add default gw: $router6"

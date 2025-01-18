@@ -14,8 +14,13 @@ CDNET_DEF_PORT = 0xcdcd
 DBG_RX_PORT    = 9
 CMD_TGT_PORT   = 1
 
+# cdnet l1
 LOCAL_IP  = "fdcd::80:00"    # 80:00:00
 TARGET_IP = "fdcd::80:00fe"  # 80:00:fe
+
+# cdnet l0
+#LOCAL_IP  = "fdcd::00"      # 00:00:00
+#TARGET_IP = "fdcd::00fe"    # 00:00:fe
 
 
 def dbg_rx_thread():

@@ -20,6 +20,8 @@ usr
 C_SOURCES = \
 usr/main.c \
 usr/cd_args.c \
+cdnet/parser/cdnet.c \
+cdnet/parser/cdnet_l0.c \
 cdnet/parser/cdnet_l1.c \
 cdnet/dev/cdbus_uart.c \
 cdnet/dev/cdctl.c \
