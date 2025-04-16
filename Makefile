@@ -24,13 +24,11 @@ cdnet/parser/cdnet.c \
 cdnet/parser/cdnet_l0.c \
 cdnet/parser/cdnet_l1.c \
 cdnet/dev/cdbus_uart.c \
-cdnet/dev/cdctl.c \
 cdnet/arch/pc/arch_wrapper.c \
 cdnet/utils/cd_list.c \
 cdnet/utils/modbus_crc.c \
 cdnet/utils/hex_dump.c \
 dev_wrapper/cdbus_tty_wrapper.c \
-dev_wrapper/cdctl_spi_wrapper.c \
 dev_wrapper/linux_dev_wrapper.c \
 ip/ip_cdnet_conversion.c \
 ip/ip_checksum.c \
@@ -49,7 +47,16 @@ vpath %.c $(sort $(dir $(C_SOURCES)))
 
 I_INCLUDES = $(foreach includedir,$(INCLUDES),-I$(includedir))
 CFLAGS = $(I_INCLUDES) -DSW_VER=\"$(GIT_VERSION)\"
-LDFLAGS = -lgpiod
+LDFLAGS =
+
+ifeq ($(USE_SPI),1)
+    C_SOURCES += dev_wrapper/cdctl_spi_wrapper.c \
+                 cdnet/dev/cdctl_pll_cal.c \
+                 cdnet/dev/cdctl.c
+    LDFLAGS += -lgpiod
+    CFLAGS += -DUSE_SPI
+endif
+
 
 DEPS = $(foreach includedir,$(INCLUDES),$(wildcard $(includedir)/*.h))
 

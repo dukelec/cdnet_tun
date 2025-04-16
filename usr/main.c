@@ -69,8 +69,11 @@ int main(int argc, char *argv[])
 
     if (dev_tyte_str && strcmp(dev_tyte_str, "spi") == 0) {
         dev_type = DEV_SPI;
+
+#ifdef USE_SPI
     } else if (dev_tyte_str && strcmp(dev_tyte_str, "tty") == 0) {
         dev_type = DEV_TTY;
+#endif
     } else if (dev_tyte_str && strcmp(dev_tyte_str, "ld") == 0) {
         dev_type = DEV_LD;
     } else {
@@ -97,9 +100,11 @@ int main(int argc, char *argv[])
     if (dev_type == DEV_TTY) {
         dev_fd = cdbus_tty_wrapper_init(dev_name, &frame_free_head);
         dev_task = cdbus_tty_wrapper_task;
+#ifdef USE_SPI
     } else if (dev_type == DEV_SPI) {
         dev_fd = cdctl_spi_wrapper_init(dev_name, &frame_free_head, intn_pin);
         dev_task = cdctl_spi_wrapper_task;
+#endif
     } else if (dev_type == DEV_LD) {
         dev_fd = linux_dev_wrapper_init(dev_name, &frame_free_head);
         dev_task = linux_dev_wrapper_task;

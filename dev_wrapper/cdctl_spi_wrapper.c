@@ -23,7 +23,8 @@
 #include "main.h"
 
 #define GPIO_CHIP_PATH  "/dev/gpiochip0"
-#define CDCTL_MASK (BIT_FLAG_RX_PENDING | BIT_FLAG_RX_LOST | BIT_FLAG_RX_ERROR | BIT_FLAG_TX_CD | BIT_FLAG_TX_ERROR)
+#define CDCTL_MASK (CDBIT_FLAG_RX_PENDING | CDBIT_FLAG_RX_LOST | \
+                    CDBIT_FLAG_RX_ERROR | CDBIT_FLAG_TX_CD | CDBIT_FLAG_TX_ERROR)
 
 static int intn_pin = -1;
 static struct gpiod_line_request *intn_request = NULL;
@@ -219,25 +220,10 @@ int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int int
     intn_pin = intn;
     int intn_pin_fd = gpio_fd_open(intn);
 
-    cdctl_dev_init(&cdctl_dev, free_head, &bus_cfg, &spi_dev, NULL);
+    cdctl_dev_init(&cdctl_dev, free_head, &bus_cfg, &spi_dev);
     cd_dev = &cdctl_dev.cd_dev;
     cd_rx_head = &cdctl_dev.rx_head;
-
-    // 12MHz / (2 + 1) * (73 + 2) / 2^1 = 150MHz
-    cdctl_reg_w(&cdctl_dev, REG_PLL_N, 0x1);
-    d_info("pll_n: %02x\n", cdctl_reg_r(&cdctl_dev, REG_PLL_N));
-    cdctl_reg_w(&cdctl_dev, REG_PLL_ML, 0x49); // 0x49: 73
-    d_info("pll_ml: %02x\n", cdctl_reg_r(&cdctl_dev, REG_PLL_ML));
-
-    d_info("pll_ctrl: %02x\n", cdctl_reg_r(&cdctl_dev, REG_PLL_CTRL));
-    cdctl_reg_w(&cdctl_dev, REG_PLL_CTRL, 0x10); // enable pll
-    d_info("clk_status: %02x\n", cdctl_reg_r(&cdctl_dev, REG_CLK_STATUS));
-    cdctl_reg_w(&cdctl_dev, REG_CLK_CTRL, 0x01); // select pll
-
-    d_info("clk_status after select pll: %02x\n", cdctl_reg_r(&cdctl_dev, REG_CLK_STATUS));
-    d_info("version after select pll: %02x\n", cdctl_reg_r(&cdctl_dev, REG_VERSION));
-    
-    cdctl_reg_w(&cdctl_dev, REG_INT_MASK, CDCTL_MASK);
+    cdctl_reg_w(&cdctl_dev, CDREG_INT_MASK, CDCTL_MASK);
 
     return intn_pin_fd;
 }
