@@ -31,6 +31,7 @@ static struct in6_addr _default_router6 = {0};
 struct in6_addr *ipv6_self = &_ipv6_self;
 struct in6_addr *default_router6 = &_default_router6;
 bool has_router6 = false;
+uint16_t port_offset = 0;
 
 
 int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
@@ -103,12 +104,17 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
     }
 
     struct udp *udp = (struct udp *)(ip_dat + 40);
-    pkt->src.port = ntohs(udp->src_port);
+    if (ntohs(udp->src_port) < port_offset) {
+        d_warn("< ip: udp src_port < port_offset, skip...\n");
+        return -1;
+    }
+    pkt->src.port = ntohs(udp->src_port) - port_offset;
     pkt->dst.port = ntohs(udp->dst_port);
     pkt->len = ntohs(udp->len) - 8; // 8: udp header
     pkt->dat = pkt->frm->dat + 3 + cdn_hdr_size_pkt(pkt);
     memcpy(pkt->dat, ip_dat + 40 + 8, pkt->len);
-    d_verbose("< ip2cdnet: udp port: %d -> %d, dat_len: %d\n", pkt->src.port, pkt->dst.port, pkt->len);
+    d_verbose("< ip2cdnet: udp port: %d - %d -> %d, dat_len: %d\n",
+            ntohs(udp->src_port), port_offset, pkt->dst.port, pkt->len);
     return 0;
 }
 
@@ -134,7 +140,7 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
 
     ipv6->next_header = IPPROTO_UDP;
     udp->src_port = htons(pkt->src.port);
-    udp->dst_port = htons(pkt->dst.port);
+    udp->dst_port = htons(pkt->dst.port + port_offset);
     udp->check = 0;
     udp->len = htons(pkt->len + 8);
     ipv6->payload_len = udp->len;
@@ -145,7 +151,7 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     udp->check = tcp_udp_v6_checksum(&ipv6->src_ip, &ipv6->dst_ip,
             ipv6->next_header, ip_dat + 40, ntohs(ipv6->payload_len));
 
-    d_verbose("> cdnet2ip: udp port: %d -> %d, dat_len: %d, cksum: %04x\n",
-            pkt->src.port, pkt->dst.port, pkt->len, udp->check);
+    d_verbose("> cdnet2ip: udp port: %d -> %d + %d, dat_len: %d, cksum: %04x\n",
+            pkt->src.port, pkt->dst.port, port_offset, pkt->len, udp->check);
     return 0;
 }

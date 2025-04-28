@@ -14,7 +14,7 @@
 
 #define CD_ARCH_SPI
 
-#define CD_FRAME_SIZE       258
+#define CD_FRAME_SIZE       261 // last 3 bytes: backup src_port and l0_lp for l0dev
 
 #define CD_DEBUG
 //#define CD_VERBOSE

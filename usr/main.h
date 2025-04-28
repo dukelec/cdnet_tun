@@ -38,13 +38,14 @@
 #include "cdbus_uart.h"
 #include "cd_args.h"
 #include "cd_debug.h"
+#include "cdn_l0dev.h"
 
 #define FRAME_MAX   200
 
 int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int intn);
 void cdctl_spi_wrapper_task(void);
 
-int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head);
+int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head, uint32_t baudrate);
 void cdbus_tty_wrapper_task(void);
 
 int linux_dev_wrapper_init(const char *dev_name, list_head_t *free_head);
@@ -56,6 +57,7 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len);
 extern struct in6_addr *ipv6_self;
 extern struct in6_addr *default_router6;
 extern bool has_router6;
+extern uint16_t port_offset;
 
 extern cd_dev_t *cd_dev;
 extern list_head_t *cd_rx_head;

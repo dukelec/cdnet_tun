@@ -46,6 +46,8 @@ int main(int argc, char *argv[])
     const char *dev_name = cd_arg_get(&ca, "--dev");
     const char *dev_tyte_str = cd_arg_get(&ca, "--dev-type");
     const char *intn_str = cd_arg_get(&ca, "--intn");
+    uint32_t tty_baud = strtol(cd_arg_get_def(&ca, "--tty-baud", "115200"), NULL, 0);
+    port_offset = strtol(cd_arg_get_def(&ca, "--port-offset", "0"), NULL, 0);
 
     if (self6 != NULL) {
         if (inet_pton(AF_INET6, self6, ipv6_self->s6_addr) != 1) {
@@ -67,12 +69,11 @@ int main(int argc, char *argv[])
         has_router6 = true;
     }
 
-    if (dev_tyte_str && strcmp(dev_tyte_str, "spi") == 0) {
-        dev_type = DEV_SPI;
-
-#ifdef USE_SPI
-    } else if (dev_tyte_str && strcmp(dev_tyte_str, "tty") == 0) {
+    if (dev_tyte_str && strcmp(dev_tyte_str, "tty") == 0) {
         dev_type = DEV_TTY;
+#ifdef USE_SPI
+    } else if (dev_tyte_str && strcmp(dev_tyte_str, "spi") == 0) {
+        dev_type = DEV_SPI;
 #endif
     } else if (dev_tyte_str && strcmp(dev_tyte_str, "ld") == 0) {
         dev_type = DEV_LD;
@@ -98,7 +99,7 @@ int main(int argc, char *argv[])
         list_put(&frame_free_head, &frame_alloc[i].node);
 
     if (dev_type == DEV_TTY) {
-        dev_fd = cdbus_tty_wrapper_init(dev_name, &frame_free_head);
+        dev_fd = cdbus_tty_wrapper_init(dev_name, &frame_free_head, tty_baud);
         dev_task = cdbus_tty_wrapper_task;
 #ifdef USE_SPI
     } else if (dev_type == DEV_SPI) {
@@ -110,6 +111,7 @@ int main(int argc, char *argv[])
         dev_task = linux_dev_wrapper_task;
     }
     dev_task();
+    l0dev_init();
     sleep(1);
 
     while (true) {
@@ -143,14 +145,25 @@ int main(int argc, char *argv[])
                 if (!frm)
                     break;
 
+                uint8_t frm_hdr = frm->dat[3];
                 tmp_packet.frm = frm;
                 tmp_packet._l_net = ipv6_self->s6_addr[14];
+                if ((frm_hdr & 0b11000000) == 0b01000000) {
+                    tmp_packet._l0_lp = l0dev_get_l0_lp(frm->dat[0]);
+                    if (tmp_packet._l0_lp == 0xff) {
+                        d_debug("->-: from_frame l0_lp error, drop\n");
+                        list_put(&frame_free_head, &frm->node);
+                        continue;
+                    }
+                }
                 ret = cdn_frame_r(&tmp_packet); // addition in: _l_net
                 if (ret) {
                     d_debug("->-: from_frame error, drop\n");
                     list_put(&frame_free_head, &frm->node);
                     continue;
                 }
+                if ((frm_hdr & 0b11000000) == 0b01000000)
+                    l0dev_rx_reply(&tmp_packet);
 
                 int ip_len;
                 ret = cdnet2ip(&tmp_packet, tmp_buf, &ip_len);
@@ -175,12 +188,16 @@ int main(int argc, char *argv[])
                 if (ret == 0) {
                     d_debug("<<<: write to dev, tun len: %d\n", nread);
                     //hex_dump(tmp_buf, nread);
+                    bool l0nr = l0dev_need_reply(&tmp_packet);
 
                     // cdnet -> cdbus
                     ret = cdn_frame_w(&tmp_packet); // addition in: _s_mac, _d_mac
 
                     if (ret == 0) {
-                        cd_dev->put_tx_frame(cd_dev, frm);
+                        if (l0nr)
+                            l0dev_tx_request(frm);
+                        else
+                            cd_dev->put_tx_frame(cd_dev, frm);
                     } else {
                         list_put(&frame_free_head, &frm->node);
                         d_debug("-<-: to_frame error, drop\n");
@@ -192,6 +209,7 @@ int main(int argc, char *argv[])
             }
         }
 
+        l0dev_routine();
         dev_task(); // tx
     }
 

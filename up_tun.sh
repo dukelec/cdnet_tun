@@ -6,7 +6,7 @@ trap 'kill $(jobs -p)' EXIT
 
 
 # options may be followed by one colon to indicate they have a required argument
-if ! options=$(getopt -o '' -l dev-type:,intn: -- "$@")
+if ! options=$(getopt -o '' -l dev-type:,intn:,tty-baud:,port-offset: -- "$@")
 then
     exit 1
 fi
@@ -18,6 +18,8 @@ do
     case $1 in
     --dev-type) dev_type="$2"; shift ;;
     --intn) intn="$2"; shift ;;
+    --tty-baud) tty_baud="$2"; shift ;;
+    --port-offset) port_offset="$2"; shift ;;
     (--) shift; break;;
     (*) echo "Incorrect parameter: $1"; exit 1;;
     esac
@@ -35,6 +37,8 @@ if [ "$dev_type" == "spi" ]; then
     [ "$intn" == "" ] && intn="25"
     params="$params --intn=$intn"
 fi
+[ "$port_offset" != "" ] && params="$params --port-offset=$port_offset"
+[ "$tty_baud" != "" ] && params="$params --tty-baud=$tty_baud"
 
 echo "invoke: ./cdnet_tun $params"
 ./cdnet_tun $params &

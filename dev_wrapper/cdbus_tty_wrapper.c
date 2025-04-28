@@ -14,14 +14,11 @@
 #include "cdbus_uart.h"
 #include "main.h"
 
-static uint32_t tty_baud = 115200;
 static const char *def_dev = "/dev/ttyACM0";
 static int uart_fd = -1;
 
 static cduart_dev_t cduart_dev = {0};
 
-
-// fd = open("/dev/ttyACM0", O_RDWR | O_NOCTTY);
 
 static int uart_init(int fd, int speed)
 {
@@ -80,17 +77,18 @@ void cdbus_tty_wrapper_task(void)
     cdbus_tty_tx();
 }
 
-int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head)
+int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head, uint32_t baudrate)
 {
     if (dev_name && *dev_name)
         def_dev = dev_name;
 
+    d_info("open tty: %s, baudrate: %d\n", def_dev, baudrate);
     uart_fd = open(def_dev, O_RDWR | O_NOCTTY);
     if(uart_fd < 0) {
         d_error("open %s failed\n", def_dev);
         exit(-1);
     }
-    if (uart_init(uart_fd, tty_baud)) {
+    if (uart_init(uart_fd, baudrate)) {
         d_error("init uart: %s faild!\n", def_dev);
         exit(-1);
     }
