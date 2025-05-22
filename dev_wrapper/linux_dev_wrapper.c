@@ -76,7 +76,7 @@ void linux_dev_wrapper_task(void)
             d_error("dl: get_rx, no free frame\n");
         }
     } else {
-        d_error("dl: get_rx, wrong size: %d\n", rx_len);
+        d_error("dl: get_rx, wrong size: %ld\n", rx_len);
     }
     
     cd_frame_t *frame = list_get_entry(&ld_tx_head, cd_frame_t);

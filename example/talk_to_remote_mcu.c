@@ -19,12 +19,12 @@
 #include <string.h>
 #include <pthread.h>
 
-#define CDNET_DEF_PORT  0xcdcd
+#define CMD_LOCAL_PORT  0x40
 #define DBG_RX_PORT     9
 #define CMD_TGT_PORT    1
 
-#define LOCAL_IP        "fdcd::80:00"   // 80:00:00
-#define TARGET_IP       "fdcd::80:00fe" // 80:00:fe
+#define LOCAL_IP        "fdcd::0000" // 00:00:00
+#define TARGET_IP       "fdcd::00fe" // 00:00:fe
 
 static int socket_cmd, socket_dbg;
 
@@ -37,7 +37,7 @@ static void *dbg_rx_thread(void *_unused)
     while (true) {
         len = recvfrom(socket_dbg, msg, sizeof(msg), 0, (struct sockaddr *)NULL, (int *)NULL);
         msg[len] = '\0';
-        printf("dbg_rx: len %d: %x, %s", len, msg[0], msg + 1);
+        printf("dbg_rx: len %d: %s", len, msg);
     }
 
     return NULL;
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     }
 
     bind_cmd_port_addr.sin6_family = AF_INET6;
-    bind_cmd_port_addr.sin6_port = htons(CDNET_DEF_PORT);
+    bind_cmd_port_addr.sin6_port = htons(CMD_LOCAL_PORT);
     //bind_cmd_port_addr.sin6_addr = in6addr_any;
     inet_pton(AF_INET6, LOCAL_IP, &bind_cmd_port_addr.sin6_addr);
 
@@ -102,9 +102,8 @@ int main(int argc, char *argv[])
     remote_addr.sin6_port = htons(CMD_TGT_PORT);
     inet_pton(AF_INET6, TARGET_IP, &remote_addr.sin6_addr);
 
-    msg[0] = 0x00;
-    len = 1;
-    if (sendto(socket_cmd, msg, 1, 0, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) < 0) {
+    len = 0; // None
+    if (sendto(socket_cmd, msg, len, 0, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) < 0) {
         printf("error");
         return -1;
     }
@@ -113,6 +112,6 @@ int main(int argc, char *argv[])
     while (true) {
         len = recvfrom(socket_cmd, msg, sizeof(msg), 0, (struct sockaddr *)NULL, (int *)NULL);
         msg[len] = '\0';
-        printf("dev_info len %d: %x, %s\n", len, msg[0], msg + 1);
+        printf("dev_info len %d: %s\n", len, msg);
     }
 }

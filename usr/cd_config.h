@@ -14,18 +14,15 @@
 
 #define CD_ARCH_SPI
 
-#define CD_FRAME_SIZE       261 // last 3 bytes: backup src_port and l0_lp for l0dev
+#define CD_FRAME_SIZE       258
 
 #define CD_DEBUG
 //#define CD_VERBOSE
 //#define CD_LIST_DEBUG
-//#define CD_DBG_STR_LEN    160
 
 //#define CD_LIST_IT
 //#define CD_IRQ_SAFE
 //#define CDN_IRQ_SAFE
-
-#define CDN_L0_C
 
 #define CDUART_IDLE_TIME    (500000 / CD_SYSTICK_US_DIV) // 500 ms
 

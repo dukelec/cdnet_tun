@@ -38,7 +38,6 @@
 #include "cdbus_uart.h"
 #include "cd_args.h"
 #include "cd_debug.h"
-#include "cdn_l0dev.h"
 
 #define FRAME_MAX   200
 

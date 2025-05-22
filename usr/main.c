@@ -111,7 +111,6 @@ int main(int argc, char *argv[])
         dev_task = linux_dev_wrapper_task;
     }
     dev_task();
-    l0dev_init();
     sleep(1);
 
     while (true) {
@@ -148,22 +147,13 @@ int main(int argc, char *argv[])
                 uint8_t frm_hdr = frm->dat[3];
                 tmp_packet.frm = frm;
                 tmp_packet._l_net = ipv6_self->s6_addr[14];
-                if ((frm_hdr & 0b11000000) == 0b01000000) {
-                    tmp_packet._l0_lp = l0dev_get_l0_lp(frm->dat[0]);
-                    if (tmp_packet._l0_lp == 0xff) {
-                        d_debug("->-: from_frame l0_lp error, drop\n");
-                        list_put(&frame_free_head, &frm->node);
-                        continue;
-                    }
-                }
+
                 ret = cdn_frame_r(&tmp_packet); // addition in: _l_net
                 if (ret) {
                     d_debug("->-: from_frame error, drop\n");
                     list_put(&frame_free_head, &frm->node);
                     continue;
                 }
-                if ((frm_hdr & 0b11000000) == 0b01000000)
-                    l0dev_rx_reply(&tmp_packet);
 
                 int ip_len;
                 ret = cdnet2ip(&tmp_packet, tmp_buf, &ip_len);
@@ -188,16 +178,12 @@ int main(int argc, char *argv[])
                 if (ret == 0) {
                     d_debug("<<<: write to dev, tun len: %d\n", nread);
                     //hex_dump(tmp_buf, nread);
-                    bool l0nr = l0dev_need_reply(&tmp_packet);
 
                     // cdnet -> cdbus
                     ret = cdn_frame_w(&tmp_packet); // addition in: _s_mac, _d_mac
 
                     if (ret == 0) {
-                        if (l0nr)
-                            l0dev_tx_request(frm);
-                        else
-                            cd_dev->put_tx_frame(cd_dev, frm);
+                        cd_dev->put_tx_frame(cd_dev, frm);
                     } else {
                         list_put(&frame_free_head, &frm->node);
                         d_debug("-<-: to_frame error, drop\n");
@@ -209,7 +195,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        l0dev_routine();
         dev_task(); // tx
     }
 

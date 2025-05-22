@@ -32,8 +32,7 @@ dev_wrapper/cdbus_tty_wrapper.c \
 dev_wrapper/linux_dev_wrapper.c \
 ip/ip_cdnet_conversion.c \
 ip/ip_checksum.c \
-tun/tun.c \
-cdn_l0dev.c
+tun/tun.c
 
 
 GIT_VERSION := $(shell git describe --dirty --always --tags)
