@@ -42,12 +42,12 @@ static list_head_t         ld_tx_head;
 
 // member functions
 
-static cd_frame_t *ld_get_rx_frame(cd_dev_t *cd_dev)
+static cd_frame_t *ld_recv_frame(cd_dev_t *cd_dev)
 {
     return list_get_entry(&ld_rx_head, cd_frame_t);
 }
 
-static void ld_put_tx_frame(cd_dev_t *cd_dev, cd_frame_t *frame)
+static void ld_send_frame(cd_dev_t *cd_dev, cd_frame_t *frame)
 {
     list_put(&ld_tx_head, &frame->node);
 }
@@ -66,7 +66,7 @@ void linux_dev_wrapper_task(void)
         cd_frame_t *frame = list_get_entry(ld_free_head, cd_frame_t);
         if (frame) {
             memcpy(frame->dat, tmp_buf, min(rx_len, 256));
-#ifdef VERBOSE
+#ifdef CD_VERBOSE
             char pbuf[52];
             hex_dump_small(pbuf, frame->dat, frame->dat[2] + 3, 16);
             d_verbose("dl: -> [%s]\n", pbuf);
@@ -81,7 +81,7 @@ void linux_dev_wrapper_task(void)
     
     cd_frame_t *frame = list_get_entry(&ld_tx_head, cd_frame_t);
     if (frame) {
-#ifdef VERBOSE
+#ifdef CD_VERBOSE
         char pbuf[52];
         hex_dump_small(pbuf, frame->dat, frame->dat[2] + 3, 16);
         d_verbose("dl: <- [%s]\n", pbuf);
@@ -115,8 +115,8 @@ int linux_dev_wrapper_init(const char *dev_name, list_head_t *free_head)
     //}
 
     ld_free_head = free_head;
-    ld_dev.get_rx_frame = ld_get_rx_frame;
-    ld_dev.put_tx_frame = ld_put_tx_frame;
+    ld_dev.recv_frame = ld_recv_frame;
+    ld_dev.send_frame = ld_send_frame;
 
     cd_dev = &ld_dev;
     cd_rx_head = &ld_rx_head;

@@ -36,16 +36,7 @@ static spi_t spi_dev = {0};
 
 static cdctl_dev_t cdctl_dev = {0};
 
-static cdctl_cfg_t bus_cfg = {
-        .mac = 0x00,
-        .baud_l = 1000000,
-        .baud_h = 10000000,
-        .filter_m = { 0xff, 0xff },
-        .mode = 0,
-        .tx_permit_len = 0x14,
-        .max_idle_len = 0xc8,
-        .tx_pre_len = 0x01
-};
+static cdctl_cfg_t bus_cfg = CDCTL_CFG_DFT(0x00);
 
 
 static bool gpio_get_intn(void)
@@ -196,7 +187,7 @@ void cdctl_spi_wrapper_task(void)
                 d_error("error reading edge events: %s\n", strerror(errno));
             }
         }
-        cdctl_routine(&cdctl_dev);
+        cdctl_poll(&cdctl_dev);
         if (gpio_get_intn() && !cdctl_dev.tx_head.len && !cdctl_dev.is_pending)
             break;
     }
@@ -206,6 +197,9 @@ int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int int
 {
     if (dev_name && *dev_name)
         def_dev = dev_name;
+
+    bus_cfg.baud_l = 1000000;
+    bus_cfg.baud_h = 10000000;
 
     spi_dev.fd = open(def_dev, O_RDWR);
     if(spi_dev.fd < 0) {

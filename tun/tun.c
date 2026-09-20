@@ -10,6 +10,7 @@
  */
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -65,7 +66,7 @@ int tun_alloc(char *dev, int flags)
  * cread: read routine that checks for errors and exits if an error is    *
  *        returned.                                                       *
  **************************************************************************/
-int cread(int fd, char *buf, int n)
+int cread(int fd, void *buf, int n)
 {
     int nread;
 
@@ -80,7 +81,7 @@ int cread(int fd, char *buf, int n)
  * cwrite: write routine that checks for errors and exits if an error is  *
  *         returned.                                                      *
  **************************************************************************/
-int cwrite(int fd, char *buf, int n)
+int cwrite(int fd, void *buf, int n)
 {
     int nwrite;
 
@@ -95,16 +96,17 @@ int cwrite(int fd, char *buf, int n)
  * read_n: ensures we read exactly n bytes, and puts them into "buf".     *
  *         (unless EOF, of course)                                        *
  **************************************************************************/
-int read_n(int fd, char *buf, int n)
+int read_n(int fd, void *buf, int n)
 {
     int nread, left = n;
+    uint8_t *p = buf;
 
     while (left > 0) {
-        if ((nread = cread(fd, buf, left)) == 0) {
+        if ((nread = cread(fd, p, left)) == 0) {
             return 0;
         } else {
             left -= nread;
-            buf += nread;
+            p += nread;
         }
     }
     return n;

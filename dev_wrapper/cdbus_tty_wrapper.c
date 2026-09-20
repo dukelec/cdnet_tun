@@ -40,7 +40,7 @@ static void cdbus_tty_tx(void)
             break;
         cduart_fill_crc(frm->dat);
 
-#ifdef VERBOSE
+#ifdef CD_VERBOSE
         char pbuf[52];
         hex_dump_small(pbuf, frm->dat, frm->dat[2] + 3, 16);
         d_verbose("<- uart tx [%s]\n", pbuf);

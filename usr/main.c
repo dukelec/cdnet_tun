@@ -140,7 +140,7 @@ int main(int argc, char *argv[])
 
             while (true) {
                 // cdbus -> cdnet
-                cd_frame_t *frm = cd_dev->get_rx_frame(cd_dev);
+                cd_frame_t *frm = cd_dev->recv_frame(cd_dev);
                 if (!frm)
                     break;
 
@@ -183,7 +183,7 @@ int main(int argc, char *argv[])
                     ret = cdn_frame_w(&tmp_packet); // addition in: _s_mac, _d_mac
 
                     if (ret == 0) {
-                        cd_dev->put_tx_frame(cd_dev, frm);
+                        cd_dev->send_frame(cd_dev, frm);
                     } else {
                         list_put(&frame_free_head, &frm->node);
                         d_debug("-<-: to_frame error, drop\n");

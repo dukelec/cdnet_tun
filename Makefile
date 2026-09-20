@@ -46,7 +46,7 @@ OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
 
 I_INCLUDES = $(foreach includedir,$(INCLUDES),-I$(includedir))
-CFLAGS = $(I_INCLUDES) -DSW_VER=\"$(GIT_VERSION)\"
+CFLAGS = $(I_INCLUDES) -DSW_VER=\"$(GIT_VERSION)\" -Wall -Wextra -Wno-unused-parameter
 LDFLAGS =
 
 ifeq ($(USE_SPI),1)
