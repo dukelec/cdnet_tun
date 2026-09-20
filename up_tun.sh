@@ -6,7 +6,7 @@ trap 'kill $(jobs -p)' EXIT
 
 
 # options may be followed by one colon to indicate they have a required argument
-if ! options=$(getopt -o '' -l dev-type:,intn:,tty-baud:,port-offset: -- "$@")
+if ! options=$(getopt -o '' -l dev-type:,intn:,tty-baud:,port-offset:,router6: -- "$@")
 then
     exit 1
 fi
@@ -20,6 +20,7 @@ do
     --intn) intn="$2"; shift ;;
     --tty-baud) tty_baud="$2"; shift ;;
     --port-offset) port_offset="$2"; shift ;;
+    --router6) router6="$2"; shift ;;
     (--) shift; break;;
     (*) echo "Incorrect parameter: $1"; exit 1;;
     esac
@@ -38,6 +39,7 @@ if [ "$dev_type" == "spi" ]; then
     params="$params --intn=$intn"
 fi
 [ "$port_offset" != "" ] && params="$params --port-offset=$port_offset"
+[ "$router6" != "" ] && params="$params --router6=$router6"
 [ "$tty_baud" != "" ] && params="$params --tty-baud=$tty_baud"
 
 echo "invoke: ./cdnet_tun $params"
@@ -57,7 +59,7 @@ ip addr add "$self6_l0/64" dev tun0
 
 if [ "$router6" != "" ]; then
     echo "add default gw: $router6"
-    route add default gw "$router6"
+    ip -6 route replace default via "$router6" dev tun0
 fi
 
 echo "set ip6 done:"
