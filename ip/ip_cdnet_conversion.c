@@ -110,8 +110,24 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
     }
     pkt->src.port = ntohs(udp->src_port) - port_offset;
     pkt->dst.port = ntohs(udp->dst_port);
-    pkt->len = ntohs(udp->len) - 8; // 8: udp header
-    pkt->dat = pkt->frm->dat + 3 + cdn_hdr_size_pkt(pkt);
+
+    int dat_len = ntohs(udp->len) - 8; // 8: udp header
+    if (dat_len < 0 || dat_len > ip_len - 48) { // 48: ipv6 + udp header
+        d_warn("< ip: bad udp len: %d, ip_len: %d, skip...\n", ntohs(udp->len), ip_len);
+        return -1;
+    }
+
+    // frame: src, dst, len, hdr..., dat..., crc_l, crc_h
+    // so dat_len <= CD_FRAME_SIZE - 5 - hdr_size, and the len byte must not overflow
+    int hdr_size = cdn_hdr_size_pkt(pkt);
+    int max_dat = min(CD_FRAME_SIZE - 5, 255) - hdr_size;
+    if (dat_len > max_dat) {
+        d_warn("< ip: udp dat_len %d > %d, skip...\n", dat_len, max_dat);
+        return -1;
+    }
+
+    pkt->len = dat_len;
+    pkt->dat = pkt->frm->dat + 3 + hdr_size;
     memcpy(pkt->dat, ip_dat + 40 + 8, pkt->len);
     d_verbose("< ip2cdnet: udp port: %d - %d -> %d, dat_len: %d\n",
             ntohs(udp->src_port), port_offset, pkt->dst.port, pkt->len);
