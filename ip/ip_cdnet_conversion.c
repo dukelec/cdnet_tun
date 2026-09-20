@@ -162,9 +162,10 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     ipv6->src_ip.s6_addr[13] = pkt->src.addr[0];
     ipv6->src_ip.s6_addr[14] = pkt->src.addr[1];
     ipv6->src_ip.s6_addr[15] = pkt->src.addr[2];
-    if (gateway && pkt->dst.addr[2] != 0xff) {
+    if (gateway && pkt->dst.addr[0] != 0xf0 && pkt->dst.addr[2] != 0xff) {
         // hand it to the host the frame is really addressed to, so the kernel
-        // can route it on; a broadcast has no single owner and stays with us
+        // can route it on. a multicast (level f0) or a broadcast (mac ff, the
+        // level 0 form) has no single owner, so it stays with us
         memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 13);
         ipv6->dst_ip.s6_addr[13] = pkt->dst.addr[0];
         ipv6->dst_ip.s6_addr[14] = pkt->dst.addr[1];

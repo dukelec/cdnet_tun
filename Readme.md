@@ -115,8 +115,10 @@ just replies to what it asked for.
 
 Two limits worth knowing:
 
-* a broadcast (mac `ff`) has no single owner, so it stays with the gateway
-  rather than reaching every host
+* a multicast (level `f0`) or a broadcast (mac `ff`) has no single owner, so it
+  stays with the gateway rather than reaching every host. the other direction
+  is fine: a host can broadcast onto the bus, and since it does so under its
+  own mac, the unicast replies come back to it
 * only the tty backend filters in software. cdctl filters dst mac in hardware
   and `filter_m` only adds 2 macs beyond its own, and the `ld` backend leaves
   the filter to the driver; cdnet_tun warns when `--gateway` is used with them
