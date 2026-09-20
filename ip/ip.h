@@ -31,27 +31,6 @@
 
 #include <netinet/in.h>
 
-struct ipv4 {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-    __u8    ihl:4,
-        version:4;
-#elif __BYTE_ORDER == __BIG_ENDIAN
-    __u8    version:4,
-        ihl:4;
-#else
-# error "Please fix endianness defines"
-#endif
-    __u8    tos;
-    __be16  tot_len;
-    __be16  id;
-    __be16  frag_off;
-    __u8    ttl;
-    __u8    protocol;
-    __sum16 check;
-    struct in_addr  src_ip;
-    struct in_addr  dst_ip;
-};
-
 struct ipv6 {
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 	__u8			traffic_class_hi:4,
@@ -85,8 +64,5 @@ struct udp {
 	__sum16 check;		/* UDP checksum */
 };
 
-
-
-void dump_ip (void *addr, int len);
 
 #endif
