@@ -94,6 +94,8 @@ int cdbus_tty_wrapper_init(const char *dev_name, list_head_t *free_head, uint32_
     }
 
     cduart_dev_init(&cduart_dev, free_head);
+    cduart_dev.local_mac = ipv6_self->s6_addr[15]; // else 0xff: accept any dst mac
+    d_info("cduart local_mac: %02x\n", cduart_dev.local_mac);
     cd_dev = &cduart_dev.cd_dev;
     cd_rx_head = &cduart_dev.rx_head;
     return uart_fd;
