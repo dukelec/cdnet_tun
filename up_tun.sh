@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 
 # options may be followed by one colon to indicate they have a required argument
-if ! options=$(getopt -o '' -l dev:,dev-type:,intn:,tty-baud:,port-offset:,router6:,tun: -- "$@")
+if ! options=$(getopt -o '' -l dev:,dev-type:,intn:,tty-baud:,port-offset:,router6:,tun:,gateway -- "$@")
 then
     exit 1
 fi
@@ -21,6 +21,7 @@ do
     --port-offset) port_offset="$2"; shift ;;
     --router6) router6="$2"; shift ;;
     --tun) tun="$2"; shift ;;
+    --gateway) gateway=1 ;;
     (--) shift; break;;
     (*) echo "Incorrect parameter: $1"; exit 1;;
     esac
@@ -71,6 +72,7 @@ fi
 [ "$dev_name" != "" ] && params="$params --dev=$dev_name"
 [ "$port_offset" != "" ] && params="$params --port-offset=$port_offset"
 [ "$router6" != "" ] && params="$params --router6=$router6"
+[ "$gateway" != "" ] && params="$params --gateway"
 [ "$tty_baud" != "" ] && params="$params --tty-baud=$tty_baud"
 
 # runs in the foreground as the invoking user, type ctrl-c to exit

@@ -214,6 +214,10 @@ int cdctl_spi_wrapper_init(const char *dev_name, list_head_t *free_head, int int
     intn_pin = intn;
     int intn_pin_fd = gpio_fd_open(intn);
 
+    if (gateway)
+        d_warn("gateway: cdctl filters dst mac in hardware, and filter_m only "
+                "adds 2 macs beyond our own; set them for the hosts you need\n");
+
     cdctl_dev_init(&cdctl_dev, free_head, &bus_cfg, &spi_dev);
     cd_dev = &cdctl_dev.cd_dev;
     cd_rx_head = &cdctl_dev.rx_head;

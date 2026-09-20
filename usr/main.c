@@ -48,6 +48,7 @@ int main(int argc, char *argv[])
     const char *intn_str = cd_arg_get(&ca, "--intn");
     uint32_t tty_baud = strtol(cd_arg_get_def(&ca, "--tty-baud", "115200"), NULL, 0);
     port_offset = strtol(cd_arg_get_def(&ca, "--port-offset", "0"), NULL, 0);
+    gateway = cd_arg_get(&ca, "--gateway") != NULL;
 
     const char *left;
     while ((left = cd_arg_get_left(&ca)) != NULL)
@@ -73,6 +74,9 @@ int main(int argc, char *argv[])
         d_debug("set router6: %s\n", router6);
         has_router6 = true;
     }
+
+    if (gateway)
+        d_debug("gateway mode: mac <-> host address, no dst mac filter\n");
 
     if (!dev_tyte_str || strcmp(dev_tyte_str, "tty") == 0) {
         dev_type = DEV_TTY;

@@ -31,6 +31,7 @@ static struct in6_addr _default_router6 = {0};
 struct in6_addr *ipv6_self = &_ipv6_self;
 struct in6_addr *default_router6 = &_default_router6;
 bool has_router6 = false;
+bool gateway = false;
 uint16_t port_offset = 0;
 
 
@@ -61,8 +62,19 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
         return -1;
     }
 
-    pkt->_s_mac = ipv6_self->s6_addr[15];
-    pkt->src.addr[1] = ipv6_self->s6_addr[14];
+    if (gateway) {
+        // the sending host's own address picks its mac, so that replies from
+        // the bus are addressed back to it instead of to us
+        if (memcmp(ipv6->src_ip.s6_addr, ipv6_self->s6_addr, 13) != 0) {
+            d_debug("< ip: src /104 not match, skip...\n");
+            return -1;
+        }
+        pkt->_s_mac = ipv6->src_ip.s6_addr[15];
+        pkt->src.addr[1] = ipv6->src_ip.s6_addr[14];
+    } else {
+        pkt->_s_mac = ipv6_self->s6_addr[15];
+        pkt->src.addr[1] = ipv6_self->s6_addr[14];
+    }
     pkt->src.addr[2] = pkt->_s_mac;
 
     pkt->dst.addr[1] = ipv6->dst_ip.s6_addr[14];
@@ -150,9 +162,18 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     ipv6->src_ip.s6_addr[13] = pkt->src.addr[0];
     ipv6->src_ip.s6_addr[14] = pkt->src.addr[1];
     ipv6->src_ip.s6_addr[15] = pkt->src.addr[2];
-    memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 16);
-    if (pkt->src.addr[0] == 0)
-        ipv6->dst_ip.s6_addr[13] = 0; // l0 address
+    if (gateway && pkt->dst.addr[2] != 0xff) {
+        // hand it to the host the frame is really addressed to, so the kernel
+        // can route it on; a broadcast has no single owner and stays with us
+        memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 13);
+        ipv6->dst_ip.s6_addr[13] = pkt->dst.addr[0];
+        ipv6->dst_ip.s6_addr[14] = pkt->dst.addr[1];
+        ipv6->dst_ip.s6_addr[15] = pkt->dst.addr[2];
+    } else {
+        memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 16);
+        if (pkt->src.addr[0] == 0)
+            ipv6->dst_ip.s6_addr[13] = 0; // l0 address
+    }
 
     ipv6->next_header = IPPROTO_UDP;
     udp->src_port = htons(pkt->src.port);

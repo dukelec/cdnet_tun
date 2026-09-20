@@ -79,6 +79,49 @@ convention: change `self6` and `self6_l0` at the top of `up_tun.sh` (and the
 addresses your programs use) if it gets in the way.
 
 
+Sharing the bus with other hosts
+------------------------
+
+By default cdnet_tun is the only endpoint: it sends with its own mac, accepts
+only frames addressed to that mac, and hands everything it receives to the local
+stack. `--gateway` changes that, so other machines on the LAN can use the bus as
+if it were attached to them:
+
+* a frame for mac `nn` is delivered to `<prefix>nn` instead of to us, so the
+  kernel routes it on to whichever host holds that address
+* the mac a packet is sent with comes from its own source address, so replies
+  from the bus come back addressed to the sender
+* the dst mac filter is turned off, since a gateway has to receive frames
+  addressed to the other hosts
+
+Give every host its own mac, and on the gateway add a route per host plus
+forwarding. The route has to be more specific than the on-link prefix, otherwise
+the packet goes straight back out of the tun device and onto the bus again:
+
+```
+# on the gateway, for a host that is mac 04 and lives at 2001:db8::2
+sysctl -w net.ipv6.conf.all.forwarding=1
+ip -6 route add fdcd::4/128 via 2001:db8::2 dev eth0
+./up_tun.sh --gateway
+
+# on that host: take the address, and route the bus through the gateway
+ip addr add fdcd::4/128 dev lo
+ip -6 route add fdcd::/64 via <gateway> dev eth0
+```
+
+Its programs then bind `fdcd::4` and talk to the bus normally, in both
+directions: a device sending to mac 04 on its own reaches that host too, not
+just replies to what it asked for.
+
+Two limits worth knowing:
+
+* a broadcast (mac `ff`) has no single owner, so it stays with the gateway
+  rather than reaching every host
+* only the tty backend filters in software. cdctl filters dst mac in hardware
+  and `filter_m` only adds 2 macs beyond its own, and the `ld` backend leaves
+  the filter to the driver; cdnet_tun warns when `--gateway` is used with them
+
+
 Packet size limit
 ------------------------
 

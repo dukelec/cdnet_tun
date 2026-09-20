@@ -56,6 +56,7 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len);
 extern struct in6_addr *ipv6_self;
 extern struct in6_addr *default_router6;
 extern bool has_router6;
+extern bool gateway;
 extern uint16_t port_offset;
 
 extern cd_dev_t *cd_dev;

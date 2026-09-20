@@ -108,6 +108,10 @@ int linux_dev_wrapper_init(const char *dev_name, list_head_t *free_head)
             exit(-1);
     }
     d_info("ioctl get_filter: %02x\n", filter);
+
+    if (gateway && filter != 0xff)
+        d_warn("gateway: driver filter is %02x, frames for other macs will not "
+                "reach us; set the driver filter accordingly\n", filter);
     
     //if (ioctl(ld_fd, CDBUS_SET_FILTER, 0) < 0) {
     //        d_error("ioctl set_filter error");
