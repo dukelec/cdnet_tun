@@ -44,12 +44,14 @@ int cd_args_free(cd_args_t *ca)
     cd_args_entry_t *entry;
     while ((entry = list_get_entry(&ca->head, cd_args_entry_t)))
         free(entry);
+    return 0;
 }
 
 
 const char *cd_arg_get(cd_args_t *ca, const char *key)
 {
     list_node_t *pre, *pos;
+    (void)pre; // list_for_each needs it, we don't
 
     list_for_each(&ca->head, pre, pos){
         cd_args_entry_t *entry = list_entry(pos, cd_args_entry_t);
@@ -82,6 +84,7 @@ const char *cd_arg_get2(cd_args_t *ca, const char *key1, const char *key2)
 const char *cd_arg_get_left(cd_args_t *ca)
 {
     list_node_t *pre, *pos;
+    (void)pre; // list_for_each needs it, we don't
 
     list_for_each(&ca->head, pre, pos){
         cd_args_entry_t *entry = list_entry(pos, cd_args_entry_t);

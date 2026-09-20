@@ -49,6 +49,11 @@ int main(int argc, char *argv[])
     uint32_t tty_baud = strtol(cd_arg_get_def(&ca, "--tty-baud", "115200"), NULL, 0);
     port_offset = strtol(cd_arg_get_def(&ca, "--port-offset", "0"), NULL, 0);
 
+    const char *left;
+    while ((left = cd_arg_get_left(&ca)) != NULL)
+        d_warn("unknown arg: %s\n", left);
+    cd_args_free(&ca); // key/val point into argv, safe to free after all gets
+
     if (self6 != NULL) {
         if (inet_pton(AF_INET6, self6, ipv6_self->s6_addr) != 1) {
             d_debug("set self6 error: %s\n", self6);
@@ -69,16 +74,16 @@ int main(int argc, char *argv[])
         has_router6 = true;
     }
 
-    if (dev_tyte_str && strcmp(dev_tyte_str, "tty") == 0) {
+    if (!dev_tyte_str || strcmp(dev_tyte_str, "tty") == 0) {
         dev_type = DEV_TTY;
 #ifdef USE_SPI
-    } else if (dev_tyte_str && strcmp(dev_tyte_str, "spi") == 0) {
+    } else if (strcmp(dev_tyte_str, "spi") == 0) {
         dev_type = DEV_SPI;
 #endif
-    } else if (dev_tyte_str && strcmp(dev_tyte_str, "ld") == 0) {
+    } else if (strcmp(dev_tyte_str, "ld") == 0) {
         dev_type = DEV_LD;
     } else {
-        d_error("un-support dev_type: %s\n", optarg);
+        d_error("un-support dev_type: %s\n", dev_tyte_str);
         exit(-1);
     }
 
@@ -144,7 +149,6 @@ int main(int argc, char *argv[])
                 if (!frm)
                     break;
 
-                uint8_t frm_hdr = frm->dat[3];
                 tmp_packet.frm = frm;
                 tmp_packet._l_net = ipv6_self->s6_addr[14];
 
