@@ -10,6 +10,41 @@ No IP/UDP protocol stack is required for MCU to communicate with a computer usin
 Currently, only Linux systems are supported, but more systems will be supported in the future.
 
 
+Using a CDBUS Bridge instead
+------------------------
+
+If the bus is reached through a [CDBUS Bridge](https://github.com/dukelec/cdbus_bridge),
+cdnet_tun is not needed at all. The bridge firmware (`master` branch) presents a
+USB ethernet port (CDC NCM) next to its serial port and does the same mapping on
+its own: the whole bus appears in `fdcd::/104`, the last 3 bytes of an address
+are the CDNET address and the UDP port is the CDNET port. So:
+
+* nothing to build and no daemon to run: the in-box NCM driver is used, on
+  Linux, macOS and Windows 11 alike
+* the port only has to be given its addresses once, see `fw_bridge/host/` in
+  the bridge repository
+* programs written for cdnet_tun work unchanged: the bridge shifts the host's
+  own port by `port_offset`, `0xcd00` by default, which is the same
+  [port offset](#port-offset) cdnet_tun applies
+
+What differs:
+
+* the host's address is the bridge's identity on the bus, so it has to match
+  `bus_cfg_mac` and `net` in the bridge config, and the router is set by
+  `router_mac` there instead of `--router6`
+* the bridge itself answers at `fdcd::10:0`, which is how it is configured
+  over the ethernet port
+* `--gateway` has no counterpart on the bridge
+
+Don't use the two at once. Opening the bridge's serial port, which is what
+cdnet_tun does with the tty backend, takes the bus away from the ethernet port
+until it is closed again, and both would claim `fdcd::/64`, on `tun0` and on
+`cdbus0`.
+
+cdnet_tun is still the tool for everything else: the linux cdbus driver (`ld`),
+a cdctl over spi, or any other serial adapter.
+
+
 Build
 ------------------------
 
@@ -60,15 +95,32 @@ and `f0` picks multicast. Between `80` and `a0` there is no difference: whether 
 level 1 packet stays on the local link or is handed to the router is decided by
 the net byte, by comparing it with the net byte of our own address.
 
-The UDP port is the CDNET port, so talking to a device is just:
+The UDP port of a device is its CDNET port, and your own port is the CDNET port
+plus the port offset (see below), so talking to a device is just:
 
 ```python
 s = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
-s.bind(("fdcd::80:00", 50040))
+s.bind(("fdcd::80:00", 0xcd00 + 40))    # port offset + CDNET port 40
 s.sendto(b"...", ("fdcd::80:00fe", 0xcdcd))
 ```
 
 See the `example` directory for complete programs.
+
+### Port offset
+
+A level 0 CDNET port is only 7 bits wide, and a port under 1024 needs root to
+bind, so a program that wants to talk level 0 could not simply bind the port it
+wants to be. `--port-offset` moves our side of the mapping out of the way: we
+send from, and are sent to, the CDNET port plus the offset, while the ports of
+the devices stay as they are. It is `0xcd00` (52480) by default, and 0 switches
+the shift off.
+
+* always bind: an unbound socket gets an ephemeral port, which on linux lies
+  anywhere in 32768 to 60999 and is below the offset about half the time.
+  Anything sent from below the offset is dropped:
+  `W: < ip: udp src_port < port_offset, skip...`
+* the other way, a frame sent to a CDNET port that does not fit above the
+  offset (over `0x32ff` with the default) cannot be delivered and is dropped
 
 ### About the `fdcd::` prefix
 

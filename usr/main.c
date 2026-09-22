@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
     const char *dev_tyte_str = cd_arg_get(&ca, "--dev-type");
     const char *intn_str = cd_arg_get(&ca, "--intn");
     uint32_t tty_baud = strtol(cd_arg_get_def(&ca, "--tty-baud", "115200"), NULL, 0);
-    port_offset = strtol(cd_arg_get_def(&ca, "--port-offset", "0"), NULL, 0);
+    port_offset = strtol(cd_arg_get_def(&ca, "--port-offset", "0xcd00"), NULL, 0);
     gateway = cd_arg_get(&ca, "--gateway") != NULL;
 
     const char *left;

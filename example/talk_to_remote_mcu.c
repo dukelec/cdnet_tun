@@ -19,6 +19,7 @@
 #include <string.h>
 #include <pthread.h>
 
+#define PORT_OFFSET     0xcd00 // --port-offset, our own ports are shifted by it
 #define CMD_LOCAL_PORT  0x40
 #define DBG_RX_PORT     9
 #define CMD_TGT_PORT    1
@@ -68,12 +69,12 @@ int main(int argc, char *argv[])
     }
 
     bind_cmd_port_addr.sin6_family = AF_INET6;
-    bind_cmd_port_addr.sin6_port = htons(CMD_LOCAL_PORT);
+    bind_cmd_port_addr.sin6_port = htons(PORT_OFFSET + CMD_LOCAL_PORT);
     //bind_cmd_port_addr.sin6_addr = in6addr_any;
     inet_pton(AF_INET6, LOCAL_IP, &bind_cmd_port_addr.sin6_addr);
 
     bind_dbg_port_addr.sin6_family = AF_INET6;
-    bind_dbg_port_addr.sin6_port = htons(DBG_RX_PORT);
+    bind_dbg_port_addr.sin6_port = htons(PORT_OFFSET + DBG_RX_PORT);
     //bind_dbg_port_addr.sin6_addr = in6addr_any;
     inet_pton(AF_INET6, LOCAL_IP, &bind_dbg_port_addr.sin6_addr);
 

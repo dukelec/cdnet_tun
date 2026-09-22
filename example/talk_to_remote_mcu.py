@@ -10,6 +10,7 @@ import socket
 import time
 import _thread
 
+PORT_OFFSET    = 0xcd00   # --port-offset, our own ports are shifted by it
 CMD_LOCAL_PORT = 0x40
 DBG_RX_PORT    = 9
 CMD_TGT_PORT   = 1
@@ -36,14 +37,14 @@ def main():
     socket_cmd = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     socket_dbg = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
-    socket_dbg.bind((LOCAL_IP, DBG_RX_PORT))
+    socket_dbg.bind((LOCAL_IP, PORT_OFFSET + DBG_RX_PORT))
     _thread.start_new_thread(dbg_rx_thread, ())
     time.sleep(1)
 
 
     # send cmd query target's dev_info
 
-    socket_cmd.bind((LOCAL_IP, CMD_LOCAL_PORT))
+    socket_cmd.bind((LOCAL_IP, PORT_OFFSET + CMD_LOCAL_PORT))
 
     msg = b''
     socket_cmd.sendto(msg, (TARGET_IP, CMD_TGT_PORT))

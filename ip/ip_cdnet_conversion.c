@@ -32,7 +32,7 @@ struct in6_addr *ipv6_self = &_ipv6_self;
 struct in6_addr *default_router6 = &_default_router6;
 bool has_router6 = false;
 bool gateway = false;
-uint16_t port_offset = 0;
+uint16_t port_offset = 0xcd00;
 
 
 int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
@@ -150,6 +150,11 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
 {
     struct ipv6 *ipv6 = (struct ipv6 *)ip_dat;
     struct udp *udp = (struct udp *)(ip_dat + 40);
+
+    if (pkt->dst.port + port_offset > 0xffff) {
+        d_warn("> cdnet: dst_port %d + port_offset > 0xffff, skip...\n", pkt->dst.port);
+        return -1;
+    }
 
     ipv6->version = 6;
     ipv6->traffic_class_hi = 0;
