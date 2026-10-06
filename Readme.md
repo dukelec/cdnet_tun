@@ -88,12 +88,15 @@ address, which `up_tun.sh` sets to `fdcd::80:00`, that is `80:00:00`.
 | `fdcd::00fe`     | `00:00:fe` | level 0, mac fe |
 | `fdcd::80:00fe`  | `80:00:fe` | level 1, mac fe on our own net |
 | `fdcd::80:01fe`  | `a0:01:fe` | level 1 on another net, sent to `--router6` |
-| `fdcd::f0:00ff`  | `f0:00:ff` | level 1 multicast |
+| `fdcd::90:00ff`  | `90:00:ff` | level 1 multicast, our own net |
+| `fdcd::b0:00ff`  | `b0:00:ff` | level 1 multicast, cross net |
 
-The level byte only has to be one of `00`, `80`, `a0` or `f0`; `00` picks level 0
-and `f0` picks multicast. Between `80` and `a0` there is no difference: whether a
-level 1 packet stays on the local link or is handed to the router is decided by
-the net byte, by comparing it with the net byte of our own address.
+The level byte is `00` for level 0, `80` for level 1 and `90` or `b0` for a
+multicast. Whether a level 1 packet stays on the local link or is handed to the
+router is decided by the net byte, by comparing it with the net byte of our own
+address, so a device has a single level 1 address, `fdcd::80:NNMM`, wherever it
+is: a frame from a device on another net, `a0:NN:MM` on the bus, arrives from
+`fdcd::80:NNMM` too, and `a0` is accepted as an alias of `80` when sending.
 
 The UDP port of a device is its CDNET port, and your own port is the CDNET port
 plus the port offset (see below), so talking to a device is just:
@@ -147,27 +150,32 @@ if it were attached to them:
   addressed to the other hosts
 
 Give every host its own mac, and on the gateway add a route per host plus
-forwarding. The route has to be more specific than the on-link prefix, otherwise
-the packet goes straight back out of the tun device and onto the bus again:
+forwarding. A host has two addresses, its level 0 one `fdcd::NNMM` and its
+level 1 one `fdcd::80:NNMM`, and a frame from the bus is delivered to the one
+matching its level, so route both. The routes have to be more specific than the
+on-link prefix, otherwise the packet goes straight back out of the tun device
+and onto the bus again:
 
 ```
 # on the gateway, for a host that is mac 04 and lives at 2001:db8::2
 sysctl -w net.ipv6.conf.all.forwarding=1
 ip -6 route add fdcd::4/128 via 2001:db8::2 dev eth0
+ip -6 route add fdcd::80:4/128 via 2001:db8::2 dev eth0
 ./up_tun.sh --gateway
 
-# on that host: take the address, and route the bus through the gateway
+# on that host: take the addresses, and route the bus through the gateway
 ip addr add fdcd::4/128 dev lo
+ip addr add fdcd::80:4/128 dev lo
 ip -6 route add fdcd::/64 via <gateway> dev eth0
 ```
 
-Its programs then bind `fdcd::4` and talk to the bus normally, in both
-directions: a device sending to mac 04 on its own reaches that host too, not
-just replies to what it asked for.
+Its programs then bind `fdcd::4` or `fdcd::80:4` and talk to the bus normally,
+in both directions: a device sending to mac 04 on its own reaches that host
+too, not just replies to what it asked for.
 
 Two limits worth knowing:
 
-* a multicast (level `f0`) or a broadcast (mac `ff`) has no single owner, so it
+* a multicast (level `90` / `b0`) or a broadcast (mac `ff`) has no single owner, so it
   stays with the gateway rather than reaching every host. the other direction
   is fine: a host can broadcast onto the bus, and since it does so under its
   own mac, the unicast replies come back to it
@@ -191,7 +199,8 @@ each):
 |-|--------------|-----------------|
 | level 0                          | 2   | 251 |
 | level 1, local link              | 3~5 | 250~248 |
-| level 1, routed, and multicast   | 7~9 | 246~244 |
+| level 1, local multicast         | 5~7 | 248~246 |
+| level 1, routed, and cross net multicast | 7~9 | 246~244 |
 
 **Keeping datagrams at 244 bytes or less is safe in every case.**
 

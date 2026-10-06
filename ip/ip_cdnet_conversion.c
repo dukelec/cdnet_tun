@@ -56,8 +56,10 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
         d_debug("< ip: /104 not match, skip...\n");
         return -1;
     }
-    if (ipv6->dst_ip.s6_addr[13] != 0x80 && ipv6->dst_ip.s6_addr[13] != 0xa0
-            && ipv6->dst_ip.s6_addr[13] != 0xf0 && ipv6->dst_ip.s6_addr[13] != 0x00) {
+    // type byte: 00 level 0, 80 level 1 (a0 is accepted as an alias of it),
+    // 90 local multicast, b0 cross net multicast
+    uint8_t type = ipv6->dst_ip.s6_addr[13];
+    if (type != 0x00 && type != 0x80 && type != 0xa0 && type != 0x90 && type != 0xb0) {
         d_debug("< ip: cdnet match failed, skip...\n");
         return -1;
     }
@@ -80,16 +82,16 @@ int ip2cdnet(cdn_pkt_t *pkt, const uint8_t *ip_dat, int ip_len)
     pkt->dst.addr[1] = ipv6->dst_ip.s6_addr[14];
     pkt->dst.addr[2] = ipv6->dst_ip.s6_addr[15];
 
-    if (ipv6->dst_ip.s6_addr[13] == 0x00) {
+    if (type == 0x00) {
         // l0 local link
         pkt->src.addr[0] = 0x00;
         pkt->dst.addr[0] = 0x00;
         pkt->_d_mac = pkt->dst.addr[2];
 
-    } else if (ipv6->dst_ip.s6_addr[13] == 0xf0) {
-        // l1 multicast
-        pkt->src.addr[0] = 0xa0;
-        pkt->dst.addr[0] = 0xf0;
+    } else if (type == 0x90 || type == 0xb0) {
+        // l1 multicast, the scope is in the type byte
+        pkt->src.addr[0] = type & 0xa0;
+        pkt->dst.addr[0] = type;
         pkt->_d_mac = pkt->dst.addr[2];
 
     } else if (ipv6->dst_ip.s6_addr[14] == ipv6_self->s6_addr[14]) {
@@ -163,16 +165,19 @@ int cdnet2ip(cdn_pkt_t *pkt, uint8_t *ip_dat, int *ip_len)
     ipv6->flow_label_lo = htons(0);
     ipv6->hop_limit = 255;
 
+    // a device has one level 1 address, fdcd::80:NNMM, whether it is on our
+    // net or not: a0 (cross net) is folded into 80 so that a reply comes from
+    // the address the request was sent to
     memcpy(ipv6->src_ip.s6_addr, ipv6_self->s6_addr, 13);
-    ipv6->src_ip.s6_addr[13] = pkt->src.addr[0];
+    ipv6->src_ip.s6_addr[13] = pkt->src.addr[0] & 0x80;
     ipv6->src_ip.s6_addr[14] = pkt->src.addr[1];
     ipv6->src_ip.s6_addr[15] = pkt->src.addr[2];
-    if (gateway && pkt->dst.addr[0] != 0xf0 && pkt->dst.addr[2] != 0xff) {
+    if (gateway && !(pkt->dst.addr[0] & 0x10) && pkt->dst.addr[2] != 0xff) {
         // hand it to the host the frame is really addressed to, so the kernel
-        // can route it on. a multicast (level f0) or a broadcast (mac ff, the
-        // level 0 form) has no single owner, so it stays with us
+        // can route it on. a multicast (type 90 / b0) or a broadcast (mac ff,
+        // the level 0 form) has no single owner, so it stays with us
         memcpy(ipv6->dst_ip.s6_addr, ipv6_self->s6_addr, 13);
-        ipv6->dst_ip.s6_addr[13] = pkt->dst.addr[0];
+        ipv6->dst_ip.s6_addr[13] = pkt->dst.addr[0] & 0x80;
         ipv6->dst_ip.s6_addr[14] = pkt->dst.addr[1];
         ipv6->dst_ip.s6_addr[15] = pkt->dst.addr[2];
     } else {
